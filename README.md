@@ -422,6 +422,7 @@ There are two methods:
 
 ## Reporting Issues
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/614d326e3e514c81b1dbd698c0e9cd0b)](https://app.codacy.com/manual/labbots/google-drive-upload?utm_source=github.com&utm_medium=referral&utm_content=labbots/google-drive-upload&utm_campaign=Badge_Grade_Dashboard)
 | Issues Status | [![GitHub issues](https://img.shields.io/github/issues/labbots/google-drive-upload.svg?label=&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues/) | [![GitHub issues-closed](https://img.shields.io/github/issues-closed/labbots/google-drive-upload.svg?label=&color=success&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues?q=is%3Aissue+is%3Aclosed) |
 | :--: | :--: | :--: |
 
