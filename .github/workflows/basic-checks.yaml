@@ -1,4 +1,4 @@
-name: formatting
+name: basic-checks
 
 on:
   push:
