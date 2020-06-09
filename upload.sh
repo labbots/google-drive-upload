@@ -66,7 +66,7 @@ _update() {
         latest_sha="$(_get_latest_sha release "${type_value}" "${repo}")"
         if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${latest_sha}/install.sh")"; then
             _clear_line 1
-            bash <(printf "%s\n" "${script}") "${job}"
+            bash <(printf "%s\n" "${script}") "${job_string:-}"
         else
             _print_center "justify" "Error: Cannot download ${job} script." "="
             exit 1
