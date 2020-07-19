@@ -13,9 +13,9 @@
 <a href="https://plant.treeware.earth/labbots/google-drive-upload"><img alt="Buy us a tree" src="https://img.shields.io/treeware/trees/labbots/google-drive-upload?color=green&label=Buy%20us%20a%20Tree%20%F0%9F%8C%B3&style=for-the-badge"></a>
 </p>
 
-> Google drive upload is a bash compliant script based on v3 google APIs.
+> Google drive upload is a collection of shell scripts runnable on all POSIX compatible shells ( sh / ksh / dash / bash / zsh / etc ).
 >
-> It utilizes google OAuth2.0 to generate access tokens and to authorize application for uploading files/folders to your google drive.
+> It utilizes google drive api v3 and google OAuth2.0 to generate access tokens and to authorize application for uploading files/folders to your google drive.
 
 - Minimal
 - Upload or Update files/folders
@@ -67,7 +67,7 @@
 
 ## Compatibility
 
-As this is a bash script, there aren't many dependencies. See [Native Dependencies](#native-dependencies) after this section for explicitly required program list.
+As this is a collection of shell scripts, there aren't many dependencies. See [Native Dependencies](#native-dependencies) after this section for explicitly required program list.
 
 ### Linux or MacOS
 
@@ -95,22 +95,38 @@ Again, it has not been officially tested on windows, there shouldn't be anything
 
 ### Native Dependencies
 
-The script explicitly requires the following programs:
+This repo contains two types of scripts, posix compatible and bash compatible.
 
-| Program       | Role In Script                                         |
-| ------------- | ------------------------------------------------------ |
-| Bash          | Execution of script                                    |
-| Curl          | All network requests                                   |
-| file/mimetype | Mimetype generation for extension less files           |
-| find          | To find files and folders for recursive folder uploads |
-| xargs         | For parallel uploading                                 |
-| mkdir         | To create folders                                      |
-| rm            | To remove files and folders                            |
-| grep          | Miscellaneous                                          |
-| sed           | Miscellaneous                                          |
-| diff          | To detect new files in a folder ( only sync.sh )       |
-| ps            | To manage background jobs ( only sync.sh )             |
-| tail          | To show indefinite logs ( only sync.sh )               |
+<strong>These programs are required in both bash and posix scripts.</strong>
+
+| Program          | Role In Script                                         |
+| ---------------- | ------------------------------------------------------ |
+| curl             | All network requests                                   |
+| file or mimetype | Mimetype generation for extension less files           |
+| find             | To find files and folders for recursive folder uploads |
+| xargs            | For parallel uploading                                 |
+| mkdir            | To create folders                                      |
+| rm               | To remove files and folders                            |
+| grep             | Miscellaneous                                          |
+| sed              | Miscellaneous                                          |
+| mktemp           | To generate temporary files ( optional )               |
+
+<strong>If BASH is not available or BASH is available but version is less tham 4.x, then below programs are also required:</strong>
+
+| Program             | Role In Script                             |
+| ------------------- | ------------------------------------------ |
+| ps                  | For parallel upload progress               |
+| date                | For installation, update and Miscellaneous |
+| cat                 | Miscellaneous                              |
+| sleep               | Self explanatory                           |
+| stty or zsh or tput | To determine column size ( optional )      |
+
+<strong>These programs are needed for synchronisation script:</strong>
+
+| Program       | Role In Script            |
+| ------------- | ------------------------- |
+| ps            | To manage background jobs |
+| tail          | To show indefinite logs   |
 
 ### Installation
 
@@ -147,7 +163,7 @@ For custom command names, repo, shell file, etc, see advanced installation metho
 To install google-drive-upload in your system, you can run the below command:
 
 ```shell
-bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh)
+curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | sh -s
 ```
 
 and done.
@@ -161,14 +177,6 @@ These are the flags that are available in the install.sh script:
 <details>
 
 <summary>Click to expand</summary>
-
--   <strong>-i | --interactive</strong>
-
-    Install script interactively, will ask for all the variables one by one.
-
-    Note: This will disregard all arguments given with below flags.
-
-    ---
 
 -   <strong>-p | --path <dir_name></strong>
 
@@ -222,6 +230,18 @@ These are the flags that are available in the install.sh script:
 
     ---
 
+-   <strong>--sh | --posix</strong>
+
+    Force install posix scripts even if system has compatible bash binary present.
+
+    ---
+
+-   <strong>-q | --quiet</strong>
+
+    Only show critical error/sucess logs.
+
+    ---
+
 -   <strong>-D | --debug</strong>
 
     Display script command trace.
@@ -239,7 +259,7 @@ Now, run the script and use flags according to your usecase.
 E.g:
 
 ```shell
-bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh) -r username/reponame -p somepath -s shell_file -c command_name -B branch_name
+curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | sh -s -- -r username/reponame -p somepath -s shell_file -c command_name -B branch_name
 ```
 </details>
 
@@ -257,7 +277,7 @@ There are two methods:
 
     <strong>If you use the this flag without actually installing the script,</strong>
 
-    <strong>e.g just by `bash upload.sh -u` then it will install the script or update if already installed.</strong>
+    <strong>e.g just by `sh upload.sh -u` then it will install the script or update if already installed.</strong>
 
 1.  Run the installation script again.
 
@@ -709,23 +729,23 @@ Now, a systemd service service can also be created which will start sync job aft
 
     The commands that will be printed is explained below:
 
-1.  Start the service `bash gsync-test.service.sh start`, where gsync-test is the service name
+1.  Start the service `sh gsync-test.service.sh start`, where gsync-test is the service name
 
     This is same as starting a sync job with command itself as mentioned in previous section.
 
-    To stop: `bash gsync-test.service.sh stop`
+    To stop: `sh gsync-test.service.sh stop`
 
 1.  If you want the job to automatically start on boot, run `bash gsync-test.service.sh enable`
 
-    To disable: `bash gsync-test.service.sh disable`
+    To disable: `sh gsync-test.service.sh disable`
 
 1.  To see logs after a job has been started.
 
-    `bash gsync-test.service.sh logs`
+    `sh gsync-test.service.sh logs`
 
-1.  To remove a job from system, `bash gsync-test.service.sh remove`
+1.  To remove a job from system, `sh gsync-test.service.sh remove`
 
-You can use multiple commands at once, e.g: `bash gsync-test.service.sh start logs`, will start and show the logs.
+You can use multiple commands at once, e.g: `sh gsync-test.service.sh start logs`, will start and show the logs.
 
 Note: The script is merely a wrapper, it uses `systemctl` to start/stop/enable/disable the service and `journalctl` is used to show the logs.
 
@@ -746,7 +766,7 @@ There are two methods:
 1.  Run the installation script again with -U/--uninstall flag
 
     ```shell
-    bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh) --uninstall
+    curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | sh -s -- --uninstall
     ```
 
     Yes, just run the installation script again with the flag and voila, it's done.
@@ -779,6 +799,7 @@ Contributions must be licensed under the MIT. The contributor retains the copyri
 - [github-bashutils](https://github.com/soulseekah/bash-utils) - soulseekah/bash-utils
 - [deanet-gist](https://gist.github.com/deanet/3427090) - Uploading File into Google Drive
 - [Bash Bible](https://github.com/dylanaraps/pure-bash-bible) - A collection of pure bash alternatives to external processes
+- [sh bible](https://github.com/dylanaraps/pure-sh-bible) - A collection of posix alternatives to external processes
 
 ## License
 

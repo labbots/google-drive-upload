@@ -82,6 +82,10 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 - Variable names can be alphanumeric with underscores. No special characters in variable names.
 - Variables name must not start with number. 
 
+Special instructions for posix scripts:
+
+- All local variables should have function name at the end. This is because posix doesn't have local variable feature. It is not mandatory but should be followed to avoid conflicts.
+
 ##### Functions
 
 - Each function must contain a introductory comment. The comment must contain function name, short description of the function and description of the arguments and list of global variables used and modified.
@@ -111,8 +115,8 @@ _check_connection() {
 }
 ```
 
-- For additing new standalone functions, use utils.sh, maintain alphabetical order.
-- For using a function in install.sh, add to it directly and also utils.sh.
+- For additing new standalone functions, use common-utils.sh and drive-utils.sh, maintain alphabetical order.
+- For using a function in install.sh, add to it directly.
 
 #### Documentation
 
@@ -125,18 +129,18 @@ _check_connection() {
 
 -   Use [shfmt](https://github.com/mvdan/sh) to format the script. Use below command:
 
-    ```shell
-    shfmt upload.sh
-    ```
+    Repo conatins a format.sh script to format all the files in cli environment.
 
-    The repo already provides the .editorconfig file, which shfmt reads, so no need for extra flags.
+    ```shell
+    ./format.sh
+    ```
 
     You can also install shfmt for various editors, refer their repo for information.
 
     Note: This is strictly necessary to maintain consistency, do not skip.
 
 -   Script should pass all [shellcheck](https://www.shellcheck.net/) warnings, if not, then disable the warning and give a valid reason.
--   Try using bash builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
+-   Try using bash/sh builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
 -   Before adding a new logic, be sure to check the existing code.
 -   If you are adding a code which will print something to the terminal, use `printCenter` function if possible.
 -   Use printf everywhere instead of echo.
