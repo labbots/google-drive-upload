@@ -2,26 +2,35 @@ name: Checks
 on:
   push:
     branches:
-      - '**'
+      - 'master'
     paths-ignore:
       - '*.md'
   pull_request:
     branches:
-      - '**'
+      - 'master'
     paths-ignore:
       - '*.md'
 jobs:
-  installation_and_download:
-    name: Installation
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macos-latest]
+    name: Installation test on ${{ matrix.platform }}
+    runs-on: ${{ matrix.platform }}
     if: "!contains(github.event.head_commit.message, '[SKIP-CI]')"
     steps:
-      - uses: actions/checkout@v1
-      - name: 'Install Google drive upload'
-        run: |
-          bash install.sh
-              eval "$(< "${HOME}/.google-drive-upload/google-drive-upload.binpath")"
-              gupload --help
-          sudo bash install.sh -B master -c custom_gupload -p /usr/bin
-              eval "$(< "${HOME}/.google-drive-upload/google-drive-upload.binpath")"
-              custom_gupload --help
+    - name: Check out code
+      uses: actions/checkout@v1
+
+    - name: 'Install Google drive upload'
+      run: |
+          set -e
+          sh install.sh
+              . "${HOME}/.google-drive-upload/google-drive-upload.binpath"
+              gupload --info && gsync --help
+          sh install.sh -U && sh install.sh --posix -B master
+              . "${HOME}/.google-drive-upload/google-drive-upload.binpath"
+              gupload --info && gsync --help
+          sh install.sh -U  && sh install.sh -c custom_gupload sync="custom_gsync"
+              . "${HOME}/.google-drive-upload/google-drive-upload.binpath"
+              custom_gupload --info && custom_gsync --help
