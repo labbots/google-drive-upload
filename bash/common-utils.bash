@@ -2,19 +2,6 @@
 # Functions that will used in core script
 
 ###################################################
-# Alternative to sleep command
-# Globals: None
-# Arguments: 1
-#   ${1} = Positive integer ( amount of time in seconds to sleep )
-# Result: Sleeps for the specified amount of time.
-# Reference:
-#   https://github.com/dylanaraps/pure-bash-bible#use-read-as-an-alternative-to-the-sleep-command
-###################################################
-_bash_sleep() {
-    read -rt "${1}" <> <(:) || :
-}
-
-###################################################
 # Convert bytes to human readable form
 # Globals: None
 # Required Arguments: 1
@@ -59,12 +46,11 @@ _check_bash_version() {
 _check_debug() {
     _print_center_quiet() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
     if [[ -n ${DEBUG} ]]; then
-        set -x
+        set -x && PS4='-> '
         _print_center() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         _clear_line() { :; } && _newline() { :; }
-        CURL_ARGS="-s" && export CURL_ARGS
+        CURL_PROGRESS="-s" && export CURL_PROGRESS
     else
-        set +x
         if [[ -z ${QUIET} ]]; then
             if _is_terminal; then
                 # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the _print_center function.
@@ -74,8 +60,9 @@ _check_debug() {
                 else
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
                 fi
+                EXTRA_LOG="_print_center" EXTRA_LOG_CLEAR="_clear_line"
             else
-                CURL_ARGS="-s" && export CURL_ARGS
+                CURL_PROGRESS="-s" && export CURL_PROGRESS
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
             fi
@@ -83,27 +70,28 @@ _check_debug() {
         else
             _print_center() { :; } && _clear_line() { :; } && _newline() { :; }
         fi
+        set +x
     fi
 }
 
 ###################################################
 # Check internet connection.
 # Probably the fastest way, takes about 1 - 2 KB of data, don't check for more than 10 secs.
-# Globals: 2 functions
-#   _print_center, _clear_line
+# Globals: 3 functions
+#   _print_center, _clear_line, _timeout
 # Arguments: None
 # Result: On
 #   Success - Nothing
 #   Error   - print message and exit 1
 ###################################################
 _check_internet() {
-    _print_center "justify" "Checking Internet Connection.." "-"
+    "${EXTRA_LOG:-:}" "justify" "Checking Internet Connection.." "-"
     if ! _timeout 10 curl -Is google.com; then
-        _clear_line 1
-        "${QUIET:-_print_center}" "justify" "Error: Internet connection" "not available."
+        "${EXTRA_LOG_CLEAR:-:}" 1
+        "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
         exit 1
     fi
-    _clear_line 1
+    "${EXTRA_LOG_CLEAR:-:}" 1
 }
 
 ###################################################
@@ -183,31 +171,30 @@ _display_time() {
 ###################################################
 _extract_id() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare LC_ALL=C ID="${1//[[:space:]]/}"
+    declare LC_ALL=C ID="${1}"
     case "${ID}" in
-        *'drive.google.com'*'id='*) ID="${ID/*id=/}" && ID="${ID//[?&]*/}" ;;
-        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) ID="${ID/*\/d\//}" && ID="${ID/\/*/}" && ID="${ID//[?&]*/}" ;;
-        *'drive.google.com'*'drive'*'folders'*) ID="${ID/*\/folders\//}" && ID="${ID//[?&]*/}" ;;
+        *'drive.google.com'*'id='*) ID="${ID##*id=}" && ID="${ID%%\?*}" && ID="${ID%%\&*}" ;;
+        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) ID="${ID##*\/d\/}" && ID="${ID%%\/*}" && ID="${ID%%\?*}" && ID="${ID%%\&*}" ;;
+        *'drive.google.com'*'drive'*'folders'*) ID="${ID##*\/folders\/}" && ID="${ID%%\?*}" && ID="${ID%%\&*}" ;;
     esac
-    printf "%s\n" "${ID}"
+    printf "%b" "${ID:+${ID}\n}"
 }
 
 ###################################################
-# Print full path of a file/folder
-# Globals: 1 variable
-#   PWD
+# A small function generate final list for folder uploads
+# Globals: 1 variable, 1 function
+#   Variables - DIRIDS
+#   Functions - _dirname
 # Arguments: 1
-#   ${1} = name of file/folder
-# Result: print full path
+#   ${1} = filename
+# Result: read discription
 ###################################################
-_full_path() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare input="${1}"
-    if [[ -f ${input} ]]; then
-        printf "%s/%s\n" "$(cd "$(_dirname "${input}")" &> /dev/null && pwd)" "${input##*/}"
-    elif [[ -d ${input} ]]; then
-        printf "%s\n" "$(cd "${input}" &> /dev/null && pwd)"
-    fi
+_gen_final_list() {
+    declare file="${1}" __rootdir
+    __rootdir="$(_dirname "${file}")"
+    printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(grep "|:_//_:|${__rootdir}|:_//_:|" <<< "${DIRIDS}" || :)" &&
+        printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}"
+    return 0
 }
 
 ###################################################
@@ -226,15 +213,13 @@ _get_latest_sha() {
         branch)
             LATEST_SHA="$(
                 : "$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000)"
-                : "$(grep "Commit\\/" -m1 <<< "${_}" || :)"
-                read -r firstline <<< "${_}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
+                : "$(printf "%s\n" "${_}" | grep -o "Commit\\/.*<" -m1 || :)" && : "${_##*\/}" && printf "%s\n" "${_%%<*}"
             )"
             ;;
         release)
             LATEST_SHA="$(
                 : "$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}")"
-                : "$(grep "=\"/""${3:-${REPO}}""/commit" -m1 <<< "${_}" || :)"
-                : "${_/*commit\//}" && printf "%s\n" "${_/\"*/}"
+                : "$(printf "%s\n" "${_}" | grep "=\"/""${3:-${REPO}}""/commit" -m1 || :)" && : "${_##*commit\/}" && printf "%s\n" "${_%%\"*}"
             )"
             ;;
     esac
@@ -261,15 +246,16 @@ _is_terminal() {
 #   ${3} - Optional, nth number of value from extracted values, default it 1.
 # Input: file | here string | pipe
 #   _json_value "Arguments" < file
-#   _json_value "Arguments <<< "${varibale}"
+#   _json_value "Arguments" <<< "${varibale}"
 #   echo something | _json_value "Arguments"
 # Result: print extracted value
 ###################################################
 _json_value() {
-    declare LC_ALL=C num
-    { [[ ${2} =~ ^([0-9]+)+$ ]] && no_of_lines="${2}"; } || :
-    { [[ ${3} =~ ^([0-9]+)+$ ]] && num="${3}"; } || { [[ ${3} != all ]] && num=1; }
-    grep -o "\"${1}\"\:.*" ${no_of_lines:+-m ${no_of_lines}} | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p || :
+    declare num _tmp
+    { [[ ${2} -gt 0 ]] && no_of_lines="${2}"; } || :
+    { [[ ${3} -gt 0 ]] && num="${3}"; } || { [[ ${3} != all ]] && num=1; }
+    _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines:+-m ${no_of_lines}})" || return 1
+    printf "%s\n" "${_tmp}" | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p || :
 }
 
 ###################################################
@@ -297,9 +283,7 @@ _print_center() {
     declare -i TERM_COLS="${COLUMNS}"
     declare type="${1}" filler
     case "${type}" in
-        normal)
-            declare out="${2}" && symbol="${3}"
-            ;;
+        normal) declare out="${2}" && symbol="${3}" ;;
         justify)
             if [[ $# = 3 ]]; then
                 declare input1="${2}" symbol="${3}" TO_PRINT out
@@ -318,7 +302,7 @@ _print_center() {
     esac
 
     declare -i str_len=${#out}
-    [[ $str_len -ge $(((TERM_COLS - 1))) ]] && {
+    [[ $str_len -ge $((TERM_COLS - 1)) ]] && {
         printf "%s\n" "${out}" && return 0
     }
 
@@ -336,29 +320,8 @@ _print_center() {
 }
 
 ###################################################
-# Remove duplicates, maintain the order as original.
-# Globals: None
-# Arguments: 1
-#   ${@} = Anything
-# Result: read description
-# Reference:
-#   https://stackoverflow.com/a/37962595
-###################################################
-_remove_array_duplicates() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare -A Aseen
-    Aunique=()
-    for i in "$@"; do
-        { [[ -z ${i} || ${Aseen[${i}]} ]]; } && continue
-        Aunique+=("${i}") && Aseen[${i}]=x
-    done
-    printf '%s\n' "${Aunique[@]}"
-}
-
-###################################################
 # Alternative to timeout command
-# Globals: 1 function
-#   _bash_sleep
+# Globals: None
 # Arguments: 1 and rest
 #   ${1} = amount of time to sleep
 #   rest = command to execute
@@ -367,18 +330,17 @@ _remove_array_duplicates() {
 #   https://stackoverflow.com/a/24416732
 ###################################################
 _timeout() {
-    declare timeout="${1:?Error: Specify Timeout}"
-    shift
-    (
-        eval "${@}" &
+    declare timeout="${1:?Error: Specify Timeout}" && shift
+    {
+        "${@}" &
         child="${!}"
-        trap -- "" SIGTERM
-        (
-            _bash_sleep "${timeout}"
-            kill "${child}" 2> /dev/null
-        ) &
+        trap -- "" TERM
+        {
+            sleep "${timeout}"
+            kill -9 "${child}"
+        } &
         wait "${child}"
-    ) &> /dev/null
+    } 2> /dev/null 1>&2
 }
 
 ###################################################
@@ -393,9 +355,9 @@ _timeout() {
 ###################################################
 _update_config() {
     [[ $# -lt 3 ]] && printf "Missing arguments\n" && return 1
-    VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}"
-    printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
-    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${VALUE_NAME}=" "${CONFIG_PATH}")" \
+    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}"
+    ! [ -f "${CONFIG_PATH}" ] && : >| "${CONFIG_PATH}" # If config file doesn't exist.
+    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${VALUE_NAME}=" "${CONFIG_PATH}" || :)" \
         "${VALUE_NAME}=\"${VALUE}\"" >| "${CONFIG_PATH}"
 }
 
