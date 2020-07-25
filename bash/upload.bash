@@ -3,9 +3,9 @@
 # shellcheck source=/dev/null
 
 _usage() {
-    printf "
+    printf "%b" "
 The script can be used to upload file/directory to google drive.\n
-Usage:\n %s [options.. ] <filename> <foldername>\n
+Usage:\n ${0##*/} [options.. ] <filename> <foldername>\n
 Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive.\n
 File name argument is optional if create directory option is used.\n
 Options:\n
@@ -22,8 +22,12 @@ Options:\n
   --speed 'speed' - Limit the download speed, supported formats: 1K, 1M and 1G.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
   -z | --config <config_path> - Override default config file with custom config file.\nIf you want to change default value, then use this format -z/--config default=default=your_config_file_path.\n
-  -R | --retry 'num of retries' - Retry the file upload if it fails, postive integer as argument. Currently only for file uploads.\n
   -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.\n
+  -R | --retry 'num of retries' - Retry the file upload if it fails, postive integer as argument. Currently only for file uploads.\n
+  -in | --include 'pattern' - Only include the files with the given pattern to upload - Applicable for folder uploads.\n
+      e.g: ${0##*/} local_folder --include "*1*", will only include with files with pattern '1' in the name.\n
+  -ex | --exclude 'pattern' - Exclude the files with the given pattern from uploading. - Applicable for folder uploads.\n
+      e.g: ${0##*/} local_folder --exclude "*1*", will exclude all the files pattern '1' in the name.\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
   --skip-internet-check - Do not check for internet connection, recommended to use in sync jobs.\n
@@ -31,7 +35,7 @@ Options:\n
   --info - Show detailed info, only if script is installed system wide.\n
   -U | --uninstall - Uninstall script, remove related files.\n
   -D | --debug - Display script command trace.\n
-  -h | --help - Display usage instructions.\n" "${0##*/}"
+  -h | --help - Display usage instructions.\n"
     exit 0
 }
 
@@ -235,6 +239,14 @@ _setup_arguments() {
                     printf "Error: -R/--retry only takes positive integers as arguments, min = 1, max = infinity.\n"
                     exit 1
                 fi
+                ;;
+            -in | --include)
+                _check_longoptions "${1}" "${2}"
+                INCLUDE_FILES="${INCLUDE_FILES} -name '${2}' " && shift
+                ;;
+            -ex | --exclude)
+                _check_longoptions "${1}" "${2}"
+                EXCLUDE_FILES="${EXCLUDE_FILES} ! -name '${2}' " && shift
                 ;;
             -q | --quiet) QUIET="_print_center_quiet" ;;
             -v | --verbose) VERBOSE="true" ;;

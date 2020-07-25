@@ -3,11 +3,11 @@
 # shellcheck source=/dev/null
 
 _usage() {
-    printf "
+    printf "%b" "
 The script can be used to sync your local folder to google drive.
 
 Utilizes google-drive-upload bash scripts.\n
-Usage: %s [options.. ]\n
+Usage: ${0##*/} [options.. ]\n
 Options:\n
   -d | --directory - Gdrive foldername.\n
   -k | --kill - to kill the background job using pid number ( -p flags ) or used with input, can be used multiple times.\n
@@ -16,18 +16,22 @@ Options:\n
   -p | --pid - Specify a pid number, used for --jobs or --kill or --info flags, can be used multiple times.\n
   -i | --info - See information about a specific sync using pid_number ( use -p flag ) or use with input, can be used multiple times.\n
   -t | --time <time_in_seconds> - Amount of time to wait before try to sync again in background.\n
-     To set wait time by default, use %s -t default='3'. Replace 3 with any positive integer.\n
+     To set wait time by default, use ${0##*/} -t default='3'. Replace 3 with any positive integer.\n
   -l | --logs - To show the logs after starting a job or show log of existing job. Can be used with pid number ( -p flag ).
      Note: If multiple pid numbers or inputs are used, then will only show log of first input as it goes on forever.
-  -a | --arguments - Additional arguments for gupload commands. e.g: %s -a '-q -o -p 4 -d'.\n
-     To set some arguments by default, use %s -a default='-q -o -p 4 -d'.\n
+  -a | --arguments - Additional arguments for gupload commands. e.g: ${0##*/} -a '-q -o -p 4 -d'.\n
+     To set some arguments by default, use ${0##*/} -a default='-q -o -p 4 -d'.\n
   -fg | --foreground - This will run the job in foreground and show the logs.\n
+  -in | --include 'pattern' - Only include the files with the given pattern to upload.\n
+       e.g: ${0##*/} local_folder --include "*1*", will only include with files with pattern '1' in the name.\n
+  -ex | --exclude 'pattern' - Exclude the files with the given pattern from uploading.\n
+       e.g: ${0##*/} local_folder --exclude "*1*", will exclude all files with pattern '1' in the name.\n
   -c | --command 'command name'- Incase if gupload command installed with any other name or to use in systemd service.\n
   --sync-detail-dir 'dirname' - Directory where a job information will be stored.
      Default: ${HOME}/.google-drive-upload\n
   -s | --service 'service name' - To generate systemd service file to setup background jobs on boot.\n
   -D | --debug - Display script command trace, use before all the flags to see maximum script trace.\n
-  -h | --help - Display usage instructions.\n" "${0##*/}" "${0##*/}" "${0##*/}" "${0##*/}"
+  -h | --help - Display usage instructions.\n"
     exit 0
 }
 
@@ -206,8 +210,10 @@ _check_and_upload() {
     [[ $(printf "%b\n" ./*) = "./*" ]] && return 0
 
     all+=(*)
-
-    mapfile -t new_files <<< "$(grep -vxFf <(printf "%s\n" "${initial[@]}") <(printf "%s\n" "${all[@]}") || :)"
+    # shellcheck disable=SC2086
+    { [ -n "${INCLUDE_FILES}" ] && mapfile -t all <<< "$(printf "%s\n" "${all[@]}" | grep -E ${INCLUDE_FILES})"; } || :
+    # shellcheck disable=SC2086
+    mapfile -t new_files <<< "$(eval grep -vxEf <(printf "%s\n" "${initial[@]}") <(printf "%s\n" "${all[@]}") ${EXCLUDE_FILES} || :)"
 
     [[ -n ${new_files[*]} ]] && printf "" >| "${ERROR_LOG}" && {
         declare -A Aseen && for new_file in "${new_files[@]}"; do
@@ -426,6 +432,14 @@ _setup_arguments() {
                 ARGS+="${2/default=/} " && shift
                 ;;
             -fg | --foreground) FOREGROUND="true" && SHOW_LOGS="true" ;;
+            -in | --include)
+                _check_longoptions "${1}" "${2}"
+                INCLUDE_FILES="${INCLUDE_FILES} -e '${2}' " && shift
+                ;;
+            -ex | --exclude)
+                _check_longoptions "${1}" "${2}"
+                EXCLUDE_FILES="${EXCLUDE_FILES} -e '${2}' " && shift
+                ;;
             -c | --command)
                 _check_longoptions "${1}" "${2}"
                 CUSTOM_COMMAND_NAME="${2}" && shift

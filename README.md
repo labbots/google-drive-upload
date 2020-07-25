@@ -115,7 +115,6 @@ This repo contains two types of scripts, posix compatible and bash compatible.
 
 | Program             | Role In Script                             |
 | ------------------- | ------------------------------------------ |
-| ps                  | For parallel upload progress               |
 | date                | For installation, update and Miscellaneous |
 | cat                 | Miscellaneous                              |
 | sleep               | Self explanatory                           |
@@ -446,6 +445,24 @@ These are the custom flags that are currently implemented:
 
     ---
 
+-   <strong>-in | --include 'pattern'</strong>
+
+    Only include the files with the given pattern to upload - Applicable for folder uploads.
+
+    e.g: gupload local_folder --include "*1*", will only include the files with pattern '1' in the name.
+
+    Note: Only provide patterns which are supported by find -name option.
+
+    ---
+
+-   <strong>-ex | --exclude 'pattern'</strong>
+
+    e.g: gupload local_folder --exclude "*1*", will exclude all the files with pattern '1' in the name.
+
+    Note: Only provide patterns which are supported by find -name option.
+
+    ---
+
 -   <strong>-q | --quiet</strong>
 
     Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.
@@ -680,6 +697,26 @@ Read this section thoroughly to fully utilise the sync script, feel free to open
     This will run the job in foreground and show the logs.
 
     Note: A already running job cannot be resumed in foreground, it will just show the existing logs.
+
+    ---
+
+-   <strong>-in | --include 'pattern'</strong>
+
+    Only include the files with the given pattern to upload.
+
+    e.g: gsync local_folder --include "*1*", will only include the files with pattern '1' in the name.\n
+
+    Note: Only provide patterns which are supported by grep, and supported by -E option.
+
+    ---
+
+-   <strong>-ex | --exclude 'pattern'</strong>
+
+    Exclude the files with the given pattern from uploading.
+
+    e.g: gsync local_folder --exclude "*1*", will exclude all the files with pattern '1' in the name.\n
+
+    Note: Only provide patterns which are supported by grep, and supported by -E option.
 
     ---
 
