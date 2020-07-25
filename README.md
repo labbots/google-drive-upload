@@ -522,7 +522,7 @@ e.g:
 
 -   <strong>gupload a b -d c d</strong>
 
-    a and c are file/folder/gdrive_link_or_id but b and d are gdrive folder, but since d is given at last, it will taken as gdrive folder.
+    a, c and d are file/folder/gdrive_link_or_id but b is gdrive folder.
 
     ---
 

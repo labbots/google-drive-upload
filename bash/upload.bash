@@ -132,9 +132,9 @@ _setup_arguments() {
     # Grab the first and second argument ( if 1st argument isn't a drive url ) and shift, only if ${1} doesn't contain -.
     if [[ ${1} != -* ]]; then
         if [[ ${1} =~ (drive.google.com|docs.google.com) ]]; then
-            { FINAL_ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
+            { FINAL_ID_INPUT_ARRAY=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         else
-            { FINAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
+            { LOCAL_INPUT_ARRAY=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         fi
     fi
 
@@ -203,7 +203,7 @@ _setup_arguments() {
             -d | --skip-duplicates) SKIP_DUPLICATES="Skip Existing" && UPLOAD_MODE="update" ;;
             -f | --file | --folder)
                 _check_longoptions "${1}" "${2}"
-                FINAL_INPUT_ARRAY+=("${2}") && shift
+                LOCAL_INPUT_ARRAY+=("${2}") && shift
                 ;;
             -cl | --clone)
                 _check_longoptions "${1}" "${2}"
@@ -241,8 +241,7 @@ _setup_arguments() {
             -V | --verbose-progress) VERBOSE_PROGRESS="true" && CURL_PROGRESS="" ;;
             --skip-internet-check) SKIP_INTERNET_CHECK=":" ;;
             '') shorthelp ;;
-            *)
-                # Check if user meant it to be a flag
+            *) # Check if user meant it to be a flag
                 if [[ ${1} = -* ]]; then
                     printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
                 else
@@ -250,24 +249,19 @@ _setup_arguments() {
                         FINAL_ID_INPUT_ARRAY+=("$(_extract_id "${1}")")
                     else
                         # If no "-" is detected in 1st arg, it adds to input
-                        FINAL_INPUT_ARRAY+=("${1}")
+                        LOCAL_INPUT_ARRAY+=("${1}")
                     fi
                     # if the 2nd arg available and doesn't start with "-", then set as folder input
                     # do above only if 3rd arg is either absent or doesn't start with "-"
-                    if [[ -n ${2} && ${2} != -* ]] && { [[ -z ${3} ]] || [[ ${3} != -* ]]; }; then
-                        FOLDER_INPUT="${2}" && shift
-                    fi
+                    [[ -n ${2:+${2##-*}} && -z ${3:-${FOLDERNAME:-${FOLDER_INPUT}}} ]] && FOLDER_INPUT="${2}" && shift
                 fi
                 ;;
         esac
         shift
     done
 
-    # If no input, then check if -C option was used or not.
-    [[ -z ${FINAL_INPUT_ARRAY[*]:-${FINAL_ID_INPUT_ARRAY[*]:-${FOLDERNAME}}} ]] && _short_help
-
     # Get foldername, prioritise the input given by -C/--create-dir option.
-    [[ -n ${FOLDER_INPUT} && -z ${FOLDERNAME} ]] && FOLDERNAME="${FOLDER_INPUT}"
+    FOLDERNAME="${FOLDERNAME:-${FOLDER_INPUT}}"
 
     [[ -n ${VERBOSE_PROGRESS:+${VERBOSE}} ]] && unset "${VERBOSE}"
 
@@ -276,6 +270,18 @@ _setup_arguments() {
     _check_debug
 
     { [[ ${CURL_PROGRESS} = "-#" ]] && CURL_PROGRESS_EXTRA="-#" && CURL_PROGRESS_EXTRA_CLEAR="_clear_line"; } || CURL_PROGRESS_EXTRA="-s"
+
+    unset Aseen && declare -A Aseen
+    for input in "${LOCAL_INPUT_ARRAY[@]}"; do
+        { [[ ${Aseen[${input}]} ]] && continue; } || Aseen[${input}]=x
+        { [[ -r ${input} ]] && FINAL_LOCAL_INPUT_ARRAY+=("${input}"); } || {
+            { "${QUIET:-_print_center}" 'normal' "[ Error: Invalid Input - ${input} ]" "=" && printf "\n"; } 1>&2
+            continue
+        }
+    done
+
+    # If no input, then check if -C option was used or not.
+    [[ -z ${FINAL_LOCAL_INPUT_ARRAY[*]:-${FINAL_ID_INPUT_ARRAY[*]:-${FOLDERNAME}}} ]] && _short_help
 
     return 0
 }
@@ -317,7 +323,7 @@ _check_credentials() {
     until [[ -n ${CLIENT_SECRET} ]]; do
         [[ -n ${client_secret} ]] && _clear_line 1
         printf "Client Secret: " && read -r CLIENT_SECRET && client_secret=1
-    done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+    done && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
 
     # Method to regenerate access_token ( also updates in config ).
     # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
@@ -439,9 +445,9 @@ _setup_workspace() {
 }
 
 ###################################################
-# Process all the values in "${FINAL_INPUT_ARRAY[@]}" & "${FINAL_ID_INPUT_ARRAY[@]}"
+# Process all the values in "${FINAL_LOCAL_INPUT_ARRAY[@]}" & "${FINAL_ID_INPUT_ARRAY[@]}"
 # Globals: 21 variables, 14 functions
-#   Variables - FINAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
+#   Variables - FINAL_LOCAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
 #               WORKSPACE_FOLDER_ID, UPLOAD_MODE, SKIP_DUPLICATES, OVERWRITE, SHARE,
 #               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, LOG_FILE_ID
 #               FILE_ID, FILE_LINK, FINAL_ID_INPUT_ARRAY ( array )
@@ -469,9 +475,7 @@ _process_arguments() {
         _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
     }
 
-    unset Aseen && declare -A Aseen
-    for input in "${FINAL_INPUT_ARRAY[@]}"; do
-        { [[ ${Aseen[${input}]} ]] && continue; } || Aseen[${input}]=x
+    for input in "${FINAL_LOCAL_INPUT_ARRAY[@]}"; do
         # Check if the argument is a file or a directory.
         if [[ -f ${input} ]]; then
             _print_center "justify" "Given Input" ": FILE" "="
@@ -517,8 +521,8 @@ _process_arguments() {
                     _clear_line 1 && DIRIDS="${ID}"
 
                     [[ -z ${PARALLEL_UPLOAD:-${VERBOSE:-${VERBOSE_PROGRESS}}} ]] && _newline "\n"
-                    _upload_folder "${parallel:-normal}" noparse "$(printf "%s\n" "${FILENAMES[@]}")" "${ID}"
-                    [[ -z ${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}} ]] && _newline "\n\n"
+                    _upload_folder "${PARALLEL_UPLOAD:-normal}" noparse "$(printf "%s\n" "${FILENAMES[@]}")" "${ID}"
+                    [[ -n ${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}} ]] && _newline "\n\n"
                 else
                     _newline "\n" && EMPTY=1
                 fi
@@ -556,8 +560,8 @@ _process_arguments() {
                     mapfile -t FINAL_LIST <<< "$(printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-${cores}}" -I {} bash -c '
                     _gen_final_list "{}"')"
 
-                    _upload_folder "${parallel:-normal}" parse "$(printf "%s\n" "${FINAL_LIST[@]}")"
-                    [[ -n ${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}} ]] && _newline "\n"
+                    _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "$(printf "%s\n" "${FINAL_LIST[@]}")"
+                    [[ -n ${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}} ]] && _newline "\n\n"
                 else
                     EMPTY=1
                 fi
@@ -578,8 +582,6 @@ _process_arguments() {
                 "${QUIET:-_print_center}" 'justify' "Empty Folder" ": ${input}" "=" 1>&2
                 printf "\n"
             fi
-        else
-            "${QUIET:-_print_center}" 'normal' "[ Error: Invalid Input - ${input} ]" "=" 1>&2 && printf "\n"
         fi
     done
 

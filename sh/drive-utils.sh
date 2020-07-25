@@ -401,7 +401,7 @@ EOF
             [ "${PARSE_MODE}" = parse ] && _clear_line 1
             _newline "\n"
 
-            until ! ps -p "${pid}" 2> /dev/null 1>&2; do
+            until ! kill -0 "${pid}" 2> /dev/null 1>&2; do
                 SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))"
                 ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))"
                 sleep 1
@@ -411,8 +411,6 @@ EOF
             done
             SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))"
             ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))"
-
-            _clear_line 1 && [ "${PARSE_MODE}" = noparse ] && _clear_line 1
             ;;
     esac
     return 0

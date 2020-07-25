@@ -123,7 +123,7 @@ _setup_arguments() {
     [ $# = 0 ] && printf "Missing arguments\n" && return 1
     # Internal variables
     # De-initialize if any variables set already.
-    unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY
+    unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_LOCAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
     CURL_PROGRESS="-#" && unset CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR EXTRA_LOG EXTRA_LOG_CLEAR
@@ -133,26 +133,17 @@ _setup_arguments() {
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
     # Grab the first and second argument ( if 1st argument isn't a drive url ) and shift, only if ${1} doesn't contain -.
-    # add "|:_//_:|" at the end, will be used as IFS delimiter
-    case "${1}" in
-        -* | '') : ;;
-        *) case "${1}" in
+    [ -n "${1##-*}" ] && {
+        case "${1}" in
             *drive.google.com* | *docs.google.com*)
                 FINAL_ID_INPUT_ARRAY="$(_extract_id "${1}")" && shift
-                case "${1}" in
-                    -* | '') : ;;
-                    *) FOLDER_INPUT="${1}" && shift ;;
-                esac
                 ;;
             *)
-                FINAL_INPUT_ARRAY="${1}" && shift
-                case "${1}" in
-                    -* | '') : ;;
-                    *) FOLDER_INPUT="${1}" && shift ;;
-                esac
+                LOCAL_INPUT_ARRAY="${1}" && shift
                 ;;
-        esac ;;
-    esac
+        esac
+        [ -n "${1##-*}" ] && FOLDER_INPUT="${1}" && shift
+    }
 
     # Configuration variables # Remote gDrive variables
     unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
@@ -163,9 +154,7 @@ _setup_arguments() {
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
     _check_config() {
-        case "${1}" in
-            default*) UPDATE_DEFAULT_CONFIG="true" ;;
-        esac
+        [ -z "${1##default=*}" ] && UPDATE_DEFAULT_CONFIG="true"
         { [ -r "${2}" ] && CONFIG="${2}"; } || {
             printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
         }
@@ -193,9 +182,7 @@ _setup_arguments() {
             -r | --root-dir)
                 _check_longoptions "${1}" "${2}"
                 ROOTDIR="${2##default=}"
-                case "${2}" in
-                    default*) UPDATE_DEFAULT_ROOTDIR="_update_config" ;;
-                esac
+                [ -z "${2##default=*}" ] && UPDATE_DEFAULT_ROOTDIR="_update_config"
                 shift
                 ;;
             -z | --config)
@@ -223,7 +210,7 @@ _setup_arguments() {
             -d | --skip-duplicates) SKIP_DUPLICATES="Skip Existing" && UPLOAD_MODE="update" ;;
             -f | --file | --folder)
                 _check_longoptions "${1}" "${2}"
-                FINAL_INPUT_ARRAY="${FINAL_INPUT_ARRAY}
+                LOCAL_INPUT_ARRAY="${LOCAL_INPUT_ARRAY}
                                    ${2}" && shift
                 ;;
             -cl | --clone)
@@ -267,48 +254,48 @@ _setup_arguments() {
             -V | --verbose-progress) VERBOSE_PROGRESS="true" && CURL_PROGRESS="" ;;
             --skip-internet-check) SKIP_INTERNET_CHECK=":" ;;
             '') shorthelp ;;
-            *)
-                # Check if user meant it to be a flag
-                case "${1}" in
-                    -*) printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1 ;;
-                    *)
-                        case "${1}" in
-                            *drive.google.com* | *docs.google.com*)
-                                FINAL_ID_INPUT_ARRAY="${FINAL_ID_INPUT_ARRAY}
-                                                      $(_extract_id "${1}")"
-                                ;;
-                            *)
-                                FINAL_INPUT_ARRAY="${FINAL_INPUT_ARRAY}
-                                                   ${1}"
-                                ;;
-                        esac
-                        case "${2}" in
-                            '' | -*) : ;;
-                            *) case "${3}" in
-                                -*) : ;;
-                                '' | *) FOLDER_INPUT="${2}" && shift ;;
-                            esac ;;
-                        esac
-                        ;;
-                esac
+            *) # Check if user meant it to be a flag
+                if [ -z "${1##-*}" ]; then
+                    printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
+                else
+                    case "${1}" in
+                        *drive.google.com* | *docs.google.com*)
+                            FINAL_ID_INPUT_ARRAY="${FINAL_ID_INPUT_ARRAY}
+                                                  $(_extract_id "${1}")"
+                            ;;
+                        *)
+                            LOCAL_INPUT_ARRAY="${LOCAL_INPUT_ARRAY}
+                                               ${1}"
+                            ;;
+                    esac
+                    [ -n "${2:+${2##-*}}" ] && [ -z "${3:-${FOLDERNAME:-${FOLDER_INPUT}}}" ] && FOLDER_INPUT="${FOLDER_INPUT:-${2}}" && shift
+                fi
                 ;;
         esac
         shift
     done
 
-    # If no input, then check if -C option was used or not.
-    [ -z "${FINAL_INPUT_ARRAY:-${FINAL_ID_INPUT_ARRAY:-${FOLDERNAME}}}" ] && _short_help
-
-    # Get foldername, prioritise the input given by -C/--create-dir option.
-    [ -n "${FOLDER_INPUT}" ] && [ -z "${FOLDERNAME}" ] && FOLDERNAME="${FOLDER_INPUT}"
-
-    [ -n "${VERBOSE_PROGRESS}" ] && [ -n "${VERBOSE}" ] && unset "${VERBOSE}"
+    [ -n "${VERBOSE_PROGRESS:-${VERBOSE}}" ] && unset "${VERBOSE}"
 
     [ -n "${QUIET}" ] && CURL_PROGRESS="-s"
 
     _check_debug
 
     { [ "${CURL_PROGRESS}" = "-#" ] && CURL_PROGRESS_EXTRA="-#" && CURL_PROGRESS_EXTRA_CLEAR="_clear_line"; } || CURL_PROGRESS_EXTRA="-s"
+
+    # Get foldername, prioritise the input given by -C/--create-dir option.
+    FOLDERNAME="${FOLDERNAME:-${FOLDER_INPUT}}"
+
+    # If no input, then check if -C option was used or not.
+    # check if given input exists ( file/folder )
+    FINAL_LOCAL_INPUT_ARRAY="$(printf "%s\n" "${LOCAL_INPUT_ARRAY}" | while read -r input; do
+        { [ -r "${input}" ] && printf "%s\n" "${input}"; } || {
+            { "${QUIET:-_print_center}" 'normal' "[ Error: Invalid Input - ${input} ]" "=" && printf "\n"; } 1>&2
+            continue
+        }
+    done)"
+
+    [ -z "${FINAL_LOCAL_INPUT_ARRAY:-${FINAL_ID_INPUT_ARRAY:-${FOLDERNAME}}}" ] && _short_help
 
     return 0
 }
@@ -475,9 +462,9 @@ _setup_workspace() {
 }
 
 ###################################################
-# Process all the values in "${FINAL_INPUT_ARRAY}" & "${FINAL_ID_INPUT_ARRAY}"
+# Process all the values in "${FINAL_LOCAL_INPUT_ARRAY}" & "${FINAL_ID_INPUT_ARRAY}"
 # Globals: 20 variables, 14 functions
-#   Variables - FINAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
+#   Variables - FINAL_LOCAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
 #               WORKSPACE_FOLDER_ID, UPLOAD_MODE, SKIP_DUPLICATES, OVERWRITE, SHARE,
 #               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, LOG_FILE_ID
 #               FILE_ID, FILE_LINK, FINAL_ID_INPUT_ARRAY ( array )
@@ -503,8 +490,8 @@ _process_arguments() {
 
     unset Aseen && while read -r input <&4 && { [ -n "${input}" ] || continue; } &&
         case "${Aseen}" in
-            *"|:_//_:|${input}|:_//_:|"*) continue ;;
-            *) Aseen="${Aseen}|:_//_:|${input}|:_//_:|" ;;
+            *"|:_//_:|${gdrive_id}|:_//_:|"*) continue ;;
+            *) Aseen="${Aseen}|:_//_:|${gdrive_id}|:_//_:|" ;;
         esac; do
         # Check if the argument is a file or a directory.
         if [ -f "${input}" ]; then
@@ -552,7 +539,7 @@ _process_arguments() {
 
                     [ -z "${PARALLEL_UPLOAD:-${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n"
                     _upload_folder "${PARALLEL_UPLOAD:-normal}" noparse "${FILENAMES}" "${ID}"
-                    [ -z "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n\n"
+                    [ -n "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n\n"
                 else
                     _newline "\n" && EMPTY=1
                 fi
@@ -594,7 +581,7 @@ EOF
                     . "${UTILS_FOLDER}"/common-utils.sh && _gen_final_list "{}" ')"
 
                     _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "${FINAL_LIST}"
-                    [ -z "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n"
+                    [ -n "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n\n"
                 else
                     EMPTY=1
                 fi
@@ -615,11 +602,9 @@ EOF
                 "${QUIET:-_print_center}" 'justify' "Empty Folder" ": ${input}" "=" 1>&2
                 printf "\n"
             fi
-        else
-            "${QUIET:-_print_center}" 'normal' "[ Error: Invalid Input - ${input} ]" "=" 1>&2 && printf "\n"
         fi
     done 4<< EOF
-$(printf "%s\n" "${FINAL_INPUT_ARRAY}")
+$(printf "%s\n" "${FINAL_LOCAL_INPUT_ARRAY}")
 EOF
 
     unset Aseen && while read -r gdrive_id <&4 && { [ -n "${gdrive_id}" ] || continue; } &&
@@ -663,7 +648,7 @@ EOF
 main() {
     [ $# = 0 ] && _short_help
 
-    UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}" && SOURCE_UTILS=". ""${UTILS_FOLDER}/common-utils.sh"" && . ""${UTILS_FOLDER}/drive-utils.sh"""
+    UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}" && SOURCE_UTILS=". '${UTILS_FOLDER}/common-utils.sh' && . '${UTILS_FOLDER}/drive-utils.sh'"
     eval "${SOURCE_UTILS}" || { printf "Error: Unable to source util files.\n" && exit 1; }
 
     set -o errexit -o noclobber

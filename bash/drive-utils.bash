@@ -249,7 +249,7 @@ _upload_file() {
 
     # Set proper variables for overwriting files
     [[ ${job} = update ]] && {
-        declare file_check_json && STRING="Updated"
+        declare file_check_json
         # Check if file actually exists, and create if not.
         if file_check_json="$(_check_existing_file "${slug}" "${folder_id}" "${token}")"; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
@@ -263,6 +263,7 @@ _upload_file() {
                 url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]}"
+                STRING="Updated"
             fi
         else
             job="create"
@@ -333,7 +334,7 @@ _upload_file() {
 ###################################################
 _upload_file_main() {
     [[ $# -lt 2 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    [[ ${1} = parse ]] && declare line="${2}" && file="${line##*"|:_//_:|"}" \
+    [[ ${1} = parse ]] && declare line="${2}" && file="${line##*"|:_//_:|"}" &&
         dirid="$(_tmp="${line%%"|:_//_:|"${file}}" &&
             printf "%s\n" "${_tmp##*"|:_//_:|"}")"
 
@@ -346,7 +347,7 @@ _upload_file_main() {
         fi
         RETURN_STATUS=2 retry="$((retry - 1))" && continue
     done
-    printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&"${RETURN_STATUS}"
+    { [[ ${RETURN_STATUS} = 1 ]] && printf "%b" "${4:+${RETURN_STATUS}\n}"; } || printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&2
     return 0
 }
 
@@ -389,12 +390,13 @@ _upload_folder() {
             printf "%s\n" "${list}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} bash -c '
             _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
             ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
+            pid="${!}"
 
             until [[ -f "${TMPFILE}"SUCCESS ]] || [[ -f "${TMPFILE}"ERORR ]]; do sleep 0.5; done
             [[ ${PARSE_MODE} = parse ]] && _clear_line 1
             _newline "\n"
 
-            until [[ -z $(jobs -pr) ]]; do
+            until ! kill -0 "${pid}" 2> /dev/null 1>&2; do
                 SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
                 ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
                 sleep 1
@@ -404,8 +406,6 @@ _upload_folder() {
             done
             SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
             ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
-
-            _clear_line 1 && [[ ${PARSE_MODE} = noparse ]] && _clear_line 1
             ;;
     esac
     return 0
