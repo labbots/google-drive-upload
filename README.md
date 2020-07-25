@@ -510,7 +510,7 @@ e.g:
 
 -   <strong>gupload a b `or` gupload -d -o -D a b</strong>
 
-    a is file/folder/gdrive_link_or_id and b is gdrive_folder
+    a is file/folder/gdrive_link_or_id and b is `gdrive_folder`
 
     ---
 
@@ -528,7 +528,7 @@ e.g:
 
 -   <strong>gupload a b -d -o c d e</strong>
 
-    a, c, d and e is file/folder/gdrive_link_or_id and b is gdrive_folder
+    a, c, d and e is file/folder/gdrive_link_or_id and b is `gdrive_folder`
 
     ---
 
