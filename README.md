@@ -287,7 +287,7 @@ There are two methods:
 
     By default, script checks for update after 5 days. Use -t / --time flag of install.sh to modify the interval.
 
-    An update log is saved in "${HOME}/.gdrive-downloader/update.log".
+    An update log is saved in `"${HOME}/.gdrive-downloader/update.log"`.
 
 **Note: Above methods always obey the values set by user in advanced installation,**
 **e.g if you have installed the script with different repo, say `myrepo/gdrive-upload`, then the update will be also fetched from the same repo.**
@@ -553,11 +553,11 @@ To create a sync job, just run
 
 `gsync folder_name -d gdrive_folder`
 
-Here, folder_name is the local folder you want to sync and gdrive_folder is google drive folder name.
+Here, `folder_name` is the local folder you want to sync and `gdrive_folder` is google drive folder name.
 
 In the local folder, all the contents present or added in the future will be automatically uploaded.
 
-Note: Giving gdrive_folder is optional, if you don't specify a name with -d/--directory flags, then it will upload in the root folder set by gupload command.
+Note: Giving `gdrive_folder` is optional, if you don't specify a name with -d/--directory flags, then it will upload in the root folder set by gupload command.
 
 Also, gdrive folder creation works in the same way as gupload command.
 
@@ -749,7 +749,7 @@ You can use multiple commands at once, e.g: `sh gsync-test.service.sh start logs
 
 Note: The script is merely a wrapper, it uses `systemctl` to start/stop/enable/disable the service and `journalctl` is used to show the logs.
 
-Extras: A sample service file has been provided in the repo just for reference, it is recommended to use gsync to generate the service file.
+Extras: A sample service file has been provided in the repo just for reference, it is recommended to use `gsync` to generate the service file.
 
 ## Uninstall
 
