@@ -12,8 +12,17 @@
 #   https://unix.stackexchange.com/a/538015
 ###################################################
 _bytes_to_human() {
-    awk '{ split( "B KB MB GB TB PB EB YB ZB" , v ) ; s=1 ; while( $1>1024 ){ $1/=1024; s++ } printf "%.2f %s", $1, v[s] }'
-    printf "\n"
+    b_bytes_to_human="$(printf "%.0f\n" "${1:-0}")" s_bytes_to_human=0
+    d_bytes_to_human='' type_bytes_to_human=''
+    while [ "${b_bytes_to_human}" -gt 1024 ]; do
+        d_bytes_to_human="$(printf ".%02d" $((b_bytes_to_human % 1024 * 100 / 1024)))"
+        b_bytes_to_human=$((b_bytes_to_human / 1024)) && s_bytes_to_human=$((s_bytes_to_human += 1))
+    done
+    j=0 && for i in B KB MB GB TB PB EB YB ZB; do
+        j="$((j += 1))" && [ "$((j - 1))" = "${s_bytes_to_human}" ] && type_bytes_to_human="${i}" && break
+        continue
+    done
+    printf "%s\n" "${b_bytes_to_human}${d_bytes_to_human} ${type_bytes_to_human}"
 }
 
 ###################################################
@@ -33,16 +42,15 @@ _check_debug() {
         set -x && PS4='-> '
         _print_center() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         _clear_line() { :; } && _newline() { :; }
-        CURL_PROGRESS="-s" && export CURL_PROGRESS
     else
         if [ -z "${QUIET}" ]; then
-            if _is_terminal; then
-                if ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ]; then
+            # check if running in terminal and support ansi escape sequences
+            if _support_ansi_escapes; then
+                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2> /dev/null &&
                     _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
-                fi
-                EXTRA_LOG="_print_center"
+                CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#"
+                export CURL_PROGRESS EXTRA_LOG CURL_PROGRESS_EXTRA
             else
-                CURL_PROGRESS="-s" && export CURL_PROGRESS
                 _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
             fi
@@ -144,9 +152,10 @@ _extract_id() {
 # use zsh or stty or tput
 ###################################################
 _get_columns_size() {
-    zsh -c 'printf "%s\n" "${COLUMNS}"' 2> /dev/null ||
-        { _tmp="$(stty size)" && printf "%s\n" "${_tmp##* }" 2> /dev/null; } ||
-        tput cols 2> /dev/null ||
+    { command -v bash 1>| /dev/null && bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1'; } ||
+        { command -v zsh 1>| /dev/null && zsh -c 'printf "%s\n" "${COLUMNS}"'; } ||
+        { command -v stty 1>| /dev/null && _tmp="$(stty size)" && printf "%s\n" "${_tmp##* }"; } ||
+        { command -v tput 1>| /dev/null && tput cols; } ||
         return 1
 }
 
@@ -197,14 +206,18 @@ _get_latest_sha() {
 }
 
 ###################################################
-# Check if script running in a terminal
+# Check if script terminal supports ansi escapes
 # Globals: 1 variable
 #   TERM
 # Arguments: None
 # Result: return 1 or 0
 ###################################################
-_is_terminal() {
-    { [ -t 1 ] || [ -z "${TERM}" ]; } && return 0 || return 1
+_support_ansi_escapes() {
+    unset ansi_escapes
+    case "${TERM}" in
+        xterm* | rxvt* | urxvt* | linux* | vt*) ansi_escapes="true" ;;
+    esac
+    { [ -t 2 ] && [ -n "${ansi_escapes}" ] && return 0; } || return 1
 }
 
 ###################################################
@@ -220,9 +233,10 @@ _is_terminal() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    { [ "${2}" -gt 0 ] && no_of_lines_json_value="${2}"; } 2> /dev/null 1>&2 || :
-    { [ "${3}" -gt 0 ] && num_json_value="${3}"; } 2> /dev/null 1>&2 || { ! [ "${3}" = all ] && num_json_value=1; }
-    _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines_json_value:+-m ${no_of_lines_json_value}})" || return 1
+    { [ "${2}" -gt 0 ] 2> /dev/null && no_of_lines_json_value="${2}"; } || :
+    { [ "${3}" -gt 0 ] 2> /dev/null && num_json_value="${3}"; } || { ! [ "${3}" = all ] && num_json_value=1; }
+    # shellcheck disable=SC2086
+    _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines_json_value:+-m} ${no_of_lines_json_value})" || return 1
     printf "%s\n" "${_tmp}" | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num_json_value}"p || :
     return 0
 }

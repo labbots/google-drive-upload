@@ -56,7 +56,7 @@ _drive_info() {
     "${EXTRA_LOG}" "justify" "Fetching info.." "-" 1>&2
     search_response="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files/${folder_id}?fields=${fetch}&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files/${folder_id}?fields=${fetch}&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     printf "%b" "${search_response:+${search_response}\n}"
@@ -86,7 +86,7 @@ _check_existing_file() {
 
     search_response="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     { _json_value id 1 1 <<< "${search_response}" 2> /dev/null 1>&2 && printf "%s\n" "${search_response}"; } || return 1
@@ -116,7 +116,7 @@ _create_directory() {
 
     search_response="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
 
     if ! folder_id="$(printf "%s\n" "${search_response}" | _json_value id 1 1)"; then
         declare create_folder_post_data create_folder_response
@@ -126,7 +126,7 @@ _create_directory() {
             -H "Authorization: Bearer ${token}" \
             -H "Content-Type: application/json; charset=UTF-8" \
             -d "${create_folder_post_data}" \
-            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
+            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
     fi
     _clear_line 1 1>&2
 
@@ -148,7 +148,7 @@ _generate_upload_link() {
         -H "X-Upload-Content-Length: ${inputsize}" \
         -d "$postdata" \
         "${url}" \
-        -D - || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
+        -D - || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     uploadlink="$(read -r firstline <<< "${uploadlink/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
@@ -508,7 +508,7 @@ _share_id() {
         -H "Authorization: Bearer ${token}" \
         -H "Content-Type: application/json; charset=UTF-8" \
         -d "${share_post_data}" \
-        "${API_URL}/drive/${API_VERSION}/files/${id}/permissions" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1
+        "${API_URL}/drive/${API_VERSION}/files/${id}/permissions" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     { _json_value id 1 1 <<< "${share_response}" 2> /dev/null 1>&2 && return 0; } ||

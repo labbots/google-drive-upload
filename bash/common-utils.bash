@@ -49,10 +49,9 @@ _check_debug() {
         set -x && PS4='-> '
         _print_center() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         _clear_line() { :; } && _newline() { :; }
-        CURL_PROGRESS="-s" && export CURL_PROGRESS
     else
         if [[ -z ${QUIET} ]]; then
-            if _is_terminal; then
+            if _support_ansi_escapes; then
                 # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the _print_center function.
                 shopt -s checkwinsize && (: && :)
                 if [[ ${COLUMNS} -lt 45 ]]; then
@@ -60,9 +59,9 @@ _check_debug() {
                 else
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
                 fi
-                EXTRA_LOG="_print_center"
+                CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#"
+                export CURL_PROGRESS EXTRA_LOG CURL_PROGRESS_EXTRA
             else
-                CURL_PROGRESS="-s" && export CURL_PROGRESS
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
             fi
@@ -227,14 +226,14 @@ _get_latest_sha() {
 }
 
 ###################################################
-# Check if script running in a terminal
+# Check if script terminal supports ansi escapes
 # Globals: 1 variable
 #   TERM
 # Arguments: None
 # Result: return 1 or 0
 ###################################################
-_is_terminal() {
-    [[ -t 1 || -z ${TERM} ]] && return 0 || return 1
+_support_ansi_escapes() {
+    { [[ -t 2 && -n ${TERM} && ${TERM} =~ (xterm|rxvt|urxvt|linux|vt) ]] && return 0; } || return 1
 }
 
 ###################################################
@@ -251,10 +250,11 @@ _is_terminal() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    declare num _tmp
+    declare num _tmp no_of_lines
     { [[ ${2} -gt 0 ]] && no_of_lines="${2}"; } || :
     { [[ ${3} -gt 0 ]] && num="${3}"; } || { [[ ${3} != all ]] && num=1; }
-    _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines:+-m ${no_of_lines}})" || return 1
+    # shellcheck disable=SC2086
+    _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines:+-m} ${no_of_lines})" || return 1
     printf "%s\n" "${_tmp}" | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p || :
 }
 

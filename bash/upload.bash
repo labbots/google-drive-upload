@@ -36,7 +36,7 @@ Options:\n
   --info - Show detailed info, only if script is installed system wide.\n
   -U | --uninstall - Uninstall script, remove related files.\n
   -D | --debug - Display script command trace.\n
-  -h | --help - Display usage instructions.\n"
+  -h | --help - Display this message.\n"
     exit 0
 }
 
@@ -129,7 +129,7 @@ _setup_arguments() {
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
-    CURL_PROGRESS="-#" EXTRA_LOG=":" && unset CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR
+    CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" INFO_FILE="${INFO_PATH}/google-drive-upload.info"
     [[ -f "${INFO_PATH}/google-drive-upload.configpath" ]] && CONFIG="$(< "${INFO_PATH}/google-drive-upload.configpath")"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
@@ -243,7 +243,7 @@ _setup_arguments() {
             --hide) HIDE_INFO=":" ;;
             -q | --quiet) QUIET="_print_center_quiet" ;;
             -v | --verbose) VERBOSE="true" ;;
-            -V | --verbose-progress) VERBOSE_PROGRESS="true" && CURL_PROGRESS="" ;;
+            -V | --verbose-progress) VERBOSE_PROGRESS="true" ;;
             --skip-internet-check) SKIP_INTERNET_CHECK=":" ;;
             '') shorthelp ;;
             *) # Check if user meant it to be a flag
@@ -262,16 +262,13 @@ _setup_arguments() {
         shift
     done
 
-    # Get foldername, prioritise the input given by -C/--create-dir option.
-    FOLDERNAME="${FOLDERNAME:-${FOLDER_INPUT}}"
-
-    [[ -n ${VERBOSE_PROGRESS:+${VERBOSE}} ]] && unset "${VERBOSE}"
-
-    [[ -n ${QUIET} ]] && CURL_PROGRESS="-s"
-
     _check_debug
 
-    { [[ ${CURL_PROGRESS} = "-#" ]] && CURL_PROGRESS_EXTRA="-#" && CURL_PROGRESS_EXTRA_CLEAR="_clear_line"; } || CURL_PROGRESS_EXTRA="-s"
+    [[ -n ${VERBOSE_PROGRESS} ]] && unset VERBOSE && CURL_PROGRESS=""
+    [[ -n ${QUIET} ]] && CURL_PROGRESS="-s"
+
+    # Get foldername, prioritise the input given by -C/--create-dir option.
+    FOLDERNAME="${FOLDERNAME:-${FOLDER_INPUT}}"
 
     unset Aseen && declare -A Aseen
     for input in "${LOCAL_INPUT_ARRAY[@]}"; do
@@ -285,19 +282,6 @@ _setup_arguments() {
     # If no input, then check if -C option was used or not.
     [[ -z ${FINAL_LOCAL_INPUT_ARRAY[*]:-${FINAL_ID_INPUT_ARRAY[*]:-${FOLDERNAME}}} ]] && _short_help
 
-    return 0
-}
-
-###################################################
-# Setup Temporary file name for writing, uses mktemp, current dir as fallback
-# Used in parallel folder uploads progress
-# Globals: 1 variable
-#   PWD ( optional )
-# Arguments: None
-# Result: read description
-###################################################
-_setup_tempfile() {
-    { type -p mktemp 2> /dev/null 1>&2 && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
     return 0
 }
 
@@ -317,7 +301,7 @@ _check_credentials() {
     [[ -r ${CONFIG} ]] &&
         . "${CONFIG}" && [[ -n ${UPDATE_DEFAULT_CONFIG} ]] && printf "%s\n" "${CONFIG}" >| "${INFO_PATH}/google-drive-upload.configpath"
 
-    ! _is_terminal && [[ -z ${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}} ]] && {
+    ! [[ -t 1 ]] && [[ -z ${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}} ]] && {
         printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
         printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
     }
@@ -464,7 +448,7 @@ _setup_workspace() {
 #               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, LOG_FILE_ID
 #               FILE_ID, FILE_LINK, FINAL_ID_INPUT_ARRAY ( array )
 #               PARALLEL_UPLOAD, QUIET, NO_OF_PARALLEL_JOBS, TMPFILE
-#   Functions - _print_center, _clear_line, _newline, _is_terminal, _print_center_quiet
+#   Functions - _print_center, _clear_line, _newline, _support_ansi_escapes, _print_center_quiet
 #               _upload_file, _share_id, _is_terminal, _dirname,
 #               _create_directory, _json_value, _url_encode, _check_existing_file, _bytes_to_human
 #               _clone_file
@@ -475,7 +459,7 @@ _process_arguments() {
     export API_URL API_VERSION ACCESS_TOKEN LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY UTILS_FOLDER \
         QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG PARALLEL_UPLOAD
 
-    export -f _bytes_to_human _dirname _json_value _url_encode _is_terminal _newline _print_center_quiet _print_center _clear_line \
+    export -f _bytes_to_human _dirname _json_value _url_encode _support_ansi_escapes _newline _print_center_quiet _print_center _clear_line \
         _check_existing_file _upload_file _upload_file_main _clone_file _collect_file_info _generate_upload_link _upload_file_from_uri _full_upload \
         _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _gen_final_list
 
@@ -484,7 +468,7 @@ _process_arguments() {
         "${SHARE:-:}" "${1:-}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
         [[ -z ${HIDE_INFO} ]] &&
             _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-" &&
-            _is_terminal && [[ ${COLUMNS} -gt 45 ]] && _print_center "normal" "↓ ↓ ↓" ' ' &&
+            _support_ansi_escapes && [[ ${COLUMNS} -gt 45 ]] && _print_center "normal" "↓ ↓ ↓" ' ' &&
             _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
         return 0
     }
@@ -634,7 +618,7 @@ _process_arguments() {
 main() {
     [[ $# = 0 ]] && _short_help
 
-    UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}"
+    UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
     { . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
 
     _check_bash_version && set -o errexit -o noclobber -o pipefail
@@ -642,7 +626,9 @@ main() {
     _setup_arguments "${@}"
     "${SKIP_INTERNET_CHECK:-_check_internet}"
 
-    [[ -n ${PARALLEL_UPLOAD} ]] && _setup_tempfile
+    [[ -n ${PARALLEL_UPLOAD} ]] && {
+        { command -v mktemp 2> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
+    }
 
     _cleanup() {
         {

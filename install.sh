@@ -49,13 +49,16 @@ _check_debug() {
     if [ -n "${DEBUG}" ]; then
         _print_center() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         _clear_line() { :; } && _newline() { :; }
-        set -x && PS4='-> '
+        set -x
     else
         if [ -z "${QUIET}" ]; then
-            if _is_terminal; then
-                if ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ]; then
+            # check if running in terminal and support ansi escape sequences
+            case "${TERM}" in
+                xterm* | rxvt* | urxvt* | linux* | vt*) ansi_escapes="true" ;;
+            esac
+            if [ -t 2 ] && [ -n "${ansi_escapes}" ]; then
+                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2> /dev/null &&
                     _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
-                fi
             else
                 _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
@@ -185,10 +188,10 @@ _dirname() {
 # use bash or zsh or stty or tput
 ###################################################
 _get_columns_size() {
-    { command -v bash 2> /dev/null 1>&2 && bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1'; } ||
-        zsh -c 'printf "%s\n" "${COLUMNS}" 2>&1' 2> /dev/null ||
-        { _tmp="$(stty size)" && printf "%s\n" "${_tmp##* }" 2> /dev/null; } ||
-        tput cols 2> /dev/null ||
+    { command -v bash 1>| /dev/null && bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1'; } ||
+        { command -v zsh 1>| /dev/null && zsh -c 'printf "%s\n" "${COLUMNS}"'; } ||
+        { command -v stty 1>| /dev/null && _tmp="$(stty size)" && printf "%s\n" "${_tmp##* }"; } ||
+        { command -v tput 1>| /dev/null && tput cols; } ||
         return 1
 }
 
@@ -667,19 +670,32 @@ main() {
 
     _variables && _setup_arguments "${@}"
 
+    _check_existing_command() {
+        if command -v "${COMMAND_NAME}" 2> /dev/null 1>&2; then
+            if grep -q COMMAND_NAME "${INFO_PATH}"/google-drive-upload.info 2> /dev/null 1>&2; then
+                return 0
+            else
+                printf "%s\n" "Error: Cannot validate existing installation, make sure no other program is installed as ${COMMAND_NAME}."
+                printf "%s\n" "You can use -c / --cmd flag to specify custom command name."
+                printf "%s\n" "Otherwise uninstall the ${COMMAND_NAME} command manually and run this script again."
+                exit 1
+            fi
+        else
+            return 1
+        fi
+    }
+
     if [ -n "${UNINSTALL}" ]; then
-        { command -v "${COMMAND_NAME}" 2> /dev/null 1>&2 && _uninstall; } || {
-            _print_center "justify" "google-drive-upload is not installed." "="
+        { _check_existing_command && _uninstall; } || {
+            "${QUIET:-_print_center}" "justify" "google-drive-upload is not installed." "="
             exit 0
         }
     else
         "${SKIP_INTERNET_CHECK:-_check_internet}"
-        if command -v "${COMMAND_NAME}" 2> /dev/null 1>&2; then
-            INSTALL_PATH="$(_dirname "$(command -v "${COMMAND_NAME}")")"
-            _start update
-        else
+        { _check_existing_command && INSTALL_PATH="$(_dirname "$(command -v "${COMMAND_NAME}")")" &&
+            _start update; } || {
             _start install
-        fi
+        }
     fi
 
     return 0
