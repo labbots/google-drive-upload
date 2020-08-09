@@ -21,8 +21,14 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v1
-
+    - uses: dorny/paths-filter@v2.2.0
+      id: filter
+      with:
+        filters: |
+          install:
+            - 'install.sh'
     - name: 'Install Google drive upload'
+      if: steps.filter.outputs.install == 'true'
       run: |
           set -e
           sh install.sh
