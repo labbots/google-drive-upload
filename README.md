@@ -110,14 +110,15 @@ This repo contains two types of scripts, posix compatible and bash compatible.
 | grep             | Miscellaneous                                          |
 | sed              | Miscellaneous                                          |
 | mktemp           | To generate temporary files ( optional )               |
+| sleep            | Self explanatory                                       |
 
 <strong>If BASH is not available or BASH is available but version is less tham 4.x, then below programs are also required:</strong>
 
 | Program             | Role In Script                             |
 | ------------------- | ------------------------------------------ |
+| awk                 | For url encoding in doing api requests     |
 | date                | For installation, update and Miscellaneous |
 | cat                 | Miscellaneous                              |
-| sleep               | Self explanatory                           |
 | stty or zsh or tput | To determine column size ( optional )      |
 
 <strong>These programs are needed for synchronisation script:</strong>
@@ -331,13 +332,15 @@ If everything went fine, all the required credentials have been set, read the ne
 
 For uploading files/remote gdrive files, the syntax is simple;
 
-`gupload filename/foldername/file_id/file_link gdrive_folder_name`
+`gupload filename/foldername/file_id/file_link -c gdrive_folder_name`
 
 where `filename/foldername` is input file/folder and `gdrive_folder_name` is the name of the folder on gdrive, where the input file/folder will be uploaded.
 
 and `file_id/file_link` is the accessible gdrive file link or id which will be uploaded without downloading.
 
 If `gdrive_folder_name` is present on gdrive, then script will upload there, else will make a folder with that name.
+
+Note: It's not mandatory to use -c / -C / --create-dir flag.
 
 Apart from basic usage, this script provides many flags for custom usecases, like parallel uploading, skipping upload of existing files, overwriting, etc.
 
@@ -357,9 +360,11 @@ These are the custom flags that are currently implemented:
 
     ---
 
--   <strong>-C | --create-dir <foldername></strong>
+-   <strong>-c | -C | --create-dir <foldername></strong>
 
     Option to create directory. Will provide folder id. Can be used to specify workspace folder for uploading files/folders.
+
+    If this option is used, then input file is optional.
 
     ---
 
@@ -387,7 +392,7 @@ These are the custom flags that are currently implemented:
 
     - This command is only helpful if you are uploading many files which aren't big enough to utilise your full bandwidth, using it otherwise will not speed up your upload and even error sometimes,
     - 1 - 6 value is recommended, but can use upto 10. If errors with a high value, use smaller number.
-    - Beaware, this isn't magic, obviously it comes at a cost of increased cpu/ram utilisation as it forks multiple bash processes to upload ( google how xargs works with -P option ).
+    - Beaware, this isn't magic, obviously it comes at a cost of increased cpu/ram utilisation as it forks multiple shell processes to upload ( google how xargs works with -P option ).
 
     ---
 
@@ -527,31 +532,27 @@ These are the custom flags that are currently implemented:
 
 For using multiple inputs at a single time, you can use the `-f/--file/--folder` or `-cl/--clone` flag as explained above.
 
-Now, to achieve multiple inputs without flag, it gets a little tricky. Some of them are explained below along with other usecases.
+Now, to achieve multiple inputs without flag, you can just use glob or just give them as arguments.
 
 e.g:
 
--   <strong>gupload a b `or` gupload -d -o -D a b</strong>
+-   <strong>gupload a b c d</strong>
 
-    a is file/folder/gdrive_link_or_id and b is `gdrive_folder`
-
-    ---
-
--   <strong>gupload -d -o a b c d -d</strong>
-
-    a,b,c and d are file/folder/gdrive_link_or_id. Using multiple inputs with -f flag.
+    a/b/c/d will be treated as file/folder/gdrive_link_or_id.
 
     ---
 
--   <strong>gupload a b -d c d</strong>
+-   <strong>gupload `*mp4 *mkv`</strong>
 
-    a, c and d are file/folder/gdrive_link_or_id but b is gdrive folder.
+    This will upload all the mp4 and mkv files in the folder, if any.
+
+    To upload all files, just use *. For more info, google how globs work in shell.
 
     ---
 
--   <strong>gupload a b -d -o c d e</strong>
+-   <strong>gupload a b -d c d -c e</strong>
 
-    a, c, d and e is file/folder/gdrive_link_or_id and b is `gdrive_folder`
+    a/b/c/d will be treated as file/folder/gdrive_link_or_id and e as `gdrive_folder`.
 
     ---
 
@@ -778,7 +779,7 @@ Now, a systemd service service can also be created which will start sync job aft
 
     To stop: `sh gsync-test.service.sh stop`
 
-1.  If you want the job to automatically start on boot, run `bash gsync-test.service.sh enable`
+1.  If you want the job to automatically start on boot, run `sh gsync-test.service.sh enable`
 
     To disable: `sh gsync-test.service.sh disable`
 

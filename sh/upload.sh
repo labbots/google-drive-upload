@@ -9,7 +9,7 @@ Usage:\n ${0##*/} [options.. ] <filename> <foldername>\n
 Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive.\n
 File name argument is optional if create directory option is used.\n
 Options:\n
-  -C | --create-dir <foldername> - option to create directory. Will provide folder id. Can be used to provide input folder, see README.\n
+  -c | -C | --create-dir <foldername> - option to create directory. Will provide folder id. Can be used to provide input folder, see README.\n
   -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.
       If you want to change the default value, then use this format, -r/--root-dir default=root_folder_id/root_folder_url\n
   -s | --skip-subdirs - Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.\n
@@ -137,19 +137,6 @@ _setup_arguments() {
     [ -f "${INFO_PATH}/google-drive-upload.configpath" ] && CONFIG="$(cat "${INFO_PATH}/google-drive-upload.configpath")"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
-    # Grab the first and second argument ( if 1st argument isn't a drive url ) and shift, only if ${1} doesn't contain -.
-    [ -n "${1##-*}" ] && {
-        case "${1}" in
-            *drive.google.com* | *docs.google.com*)
-                FINAL_ID_INPUT_ARRAY="$(_extract_id "${1}")" && shift
-                ;;
-            *)
-                LOCAL_INPUT_ARRAY="${1}" && shift
-                ;;
-        esac
-        [ -n "${1##-*}" ] && FOLDER_INPUT="${1}" && shift
-    }
-
     # Configuration variables # Remote gDrive variables
     unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
     API_URL="https://www.googleapis.com"
@@ -180,7 +167,7 @@ _setup_arguments() {
             -u | --update) _check_debug && _update ;;
             -U | --uninstall) _check_debug && _update uninstall ;;
             --info) _version_info ;;
-            -C | --create-dir)
+            -c | -C | --create-dir)
                 _check_longoptions "${1}" "${2}"
                 FOLDERNAME="${2}" && shift
                 ;;
@@ -282,7 +269,6 @@ _setup_arguments() {
                                                ${1}"
                             ;;
                     esac
-                    [ -n "${2:+${2##-*}}" ] && [ -z "${3:-${FOLDERNAME:-${FOLDER_INPUT}}}" ] && FOLDER_INPUT="${FOLDER_INPUT:-${2}}" && shift
                 fi
                 ;;
         esac
