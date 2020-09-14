@@ -86,7 +86,7 @@ _check_debug() {
 _check_internet() {
     "${EXTRA_LOG}" "justify" "Checking Internet Connection.." "-"
     if ! _timeout 10 curl -Is google.com; then
-        _clear_line1
+        _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
         exit 1
     fi
