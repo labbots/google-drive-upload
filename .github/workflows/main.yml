@@ -27,16 +27,24 @@ jobs:
         filters: |
           install:
             - 'install.sh'
+          upload:
+            - '+(sh|bash|merge.sh)'
     - name: 'Install Google drive upload'
       if: steps.filter.outputs.install == 'true'
       run: |
           set -e
           sh install.sh
-              . "${HOME}/.google-drive-upload/google-drive-upload.binpath"
+              PATH="${HOME}/.google-drive-upload:${PATH}"
               gupload --info && gsync --help
           sh install.sh -U && sh install.sh --posix -B master
-              . "${HOME}/.google-drive-upload/google-drive-upload.binpath"
               gupload --info && gsync --help
           sh install.sh -U  && sh install.sh -c custom_gupload sync="custom_gsync"
-              . "${HOME}/.google-drive-upload/google-drive-upload.binpath"
               custom_gupload --info && custom_gsync --help
+    - name: 'Format and merge test'
+      if: steps.filter.outputs.format_and_merge == 'true'
+      run: |
+          set -e
+          { { command -v apt-get && apt-get install snapd -yqq && snap install shfmt ;} ||
+            { command -v brew && brew install shfmt ;} ;} 2>| /dev/null 1>&2
+          sh merge.sh
+          { [ -n "$(git diff)" ] && printf "%s\n" "Error: Format scripts and run merge.sh before pushing the commits." && git diff && exit 1 ;} || :

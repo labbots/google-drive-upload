@@ -139,6 +139,12 @@ _check_connection() {
 
     Note: This is strictly necessary to maintain consistency, do not skip.
 
+    Repo also contains a merge.sh script which basically merges the script to make a single standalone executable file, make sure to run that.
+
+    ```shell
+    ./merge.sh
+    ```
+
 -   Script should pass all [shellcheck](https://www.shellcheck.net/) warnings, if not, then disable the warning and give a valid reason.
 -   Try using bash/sh builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
 -   Before adding a new logic, be sure to check the existing code.

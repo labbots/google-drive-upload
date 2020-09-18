@@ -282,7 +282,7 @@ _upload_file() {
         STRING="Uploaded"
     }
 
-    __file_upload_file="${HOME}/.google-drive-upload/${slug_upload_file}__::__${folder_id_upload_file}__::__${inputsize_upload_file}"
+    __file_upload_file="${INFO_PATH}/${slug_upload_file}__::__${folder_id_upload_file}__::__${inputsize_upload_file}"
     # https://developers.google.com/drive/api/v3/manage-uploads
     if [ -r "${__file_upload_file}" ]; then
         uploadlink_upload_file="$(cat "${__file_upload_file}" || :)"

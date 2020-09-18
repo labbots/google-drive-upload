@@ -47,27 +47,30 @@ _short_help() {
 
 ###################################################
 # Automatic updater, only update if script is installed system wide.
-# Globals: 1 variable, 2 functions
-#    INFO_FILE | _update, _update_config
+# Globals: 5 variables, 2 functions
+#   COMMAND_NAME, REPO, INSTALL_PATH, TYPE, TYPE_VALUE | _update, _update_value
 # Arguments: None
 # Result: On
 #   Update if AUTO_UPDATE_INTERVAL + LAST_UPDATE_TIME less than printf "%(%s)T\\n" "-1"
 ###################################################
 _auto_update() {
+    export REPO
     (
-        [[ -w ${INFO_FILE} ]] && . "${INFO_FILE}" && command -v "${COMMAND_NAME}" 2>| /dev/null 1>&2 && {
-            [[ $((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL)) -lt $(printf "%(%s)T\\n" "-1") ]] &&
-                _update 2>&1 1>| "${INFO_PATH}/update.log" &&
-                _update_config LAST_UPDATE_TIME "$(printf "%(%s)T\\n" "-1")" "${INFO_FILE}"
-        }
+        _REPO="${REPO}"
+        command -v "${COMMAND_NAME}" 1> /dev/null &&
+            if [[ -n "${_REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+${TYPE_VALUE}}}}}" ]]; then
+                current_time="$(printf "%(%s)T\\n" "-1")"
+                [[ $((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL)) -lt ${current_time} ]] && _update
+                _update_value LAST_UPDATE_TIME "${current_time}"
+            fi
     ) 2>| /dev/null 1>&2 &
     return 0
 }
 
 ###################################################
 # Install/Update/uninstall the script.
-# Globals: 3 variables
-#   Varibles - HOME, REPO, TYPE_VALUE
+# Globals: 4 variables
+#   Varibles - HOME, REPO, TYPE_VALUE, GLOBAL_INSTALL
 # Arguments: 1
 #   ${1} = uninstall or update
 # Result: On
@@ -76,33 +79,52 @@ _auto_update() {
 ###################################################
 _update() {
     declare job="${1:-update}"
-    [[ ${job} =~ uninstall ]] && job_string="--uninstall"
+    [[ ${GLOBAL_INSTALL} = true ]] && ! [[ $(id -u) = 0 ]] && printf "%s\n" "Error: Need root access to update." && return 0
+    [[ ${job} =~ uninstall ]] && job_uninstall="--uninstall"
     _print_center "justify" "Fetching ${job} script.." "-"
-    [[ -w ${INFO_FILE} ]] && . "${INFO_FILE}"
     declare repo="${REPO:-labbots/google-drive-upload}" type_value="${TYPE_VALUE:-latest}"
     { [[ ${TYPE:-} != branch ]] && type_value="$(_get_latest_sha release "${type_value}" "${repo}")"; } || :
     if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${type_value}/install.sh")"; then
         _clear_line 1
-        printf "%s\n" "${script}" | bash -s -- ${job_string:-} --skip-internet-check
+        printf "%s\n" "${script}" | bash -s -- ${job_uninstall:-} --skip-internet-check
+        current_time="$(printf "%(%s)T\\n" "-1")"
+        [[ -z ${job_uninstall} ]] && _update_value LAST_UPDATE_TIME "${current_time}" &
     else
         _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Cannot download ${job} script." "=" 1>&2
-        exit 1
+        return 1
     fi
-    exit "${?}"
+    return 0
 }
 
 ###################################################
-# Print the contents of info file if scipt is installed system wide.
-# Path is INFO_FILE="${HOME}/.google-drive-upload/google-drive-upload.info"
-# Globals: 1 variable
-#   HOME
+# Update in-script values
+###################################################
+_update_value() {
+    declare command_path="${INSTALL_PATH:?}/${COMMAND_NAME}" \
+        value_name="${1:-}" value="${2:-}" script_without_value_and_shebang
+    script_without_value_and_shebang="$(grep -v "${value_name}=\".*\".* # added values" "${command_path}" | sed 1d)"
+    new_script="$(
+        sed -n 1p "${command_path}"
+        printf "%s\n" "${value_name}=\"${value}\" # added values"
+        printf "%s\n" "${script_without_value_and_shebang}"
+    )"
+    chmod +w "${command_path}" && printf "%s\n" "${new_script}" >| "${command_path}" && chmod -w "${command_path}"
+    return 0
+}
+
+###################################################
+# Print info if installed
+# Globals: 7 variable
+#   COMMAND_NAME REPO INSTALL_PATH INSTALLATION TYPE TYPE_VALUE LATEST_INSTALLED_SHA
 # Arguments: None
 # Result: read description
 ###################################################
 _version_info() {
-    if [[ -r ${INFO_FILE} ]]; then
-        printf "%s\n" "$(< "${INFO_FILE}")"
+    if command -v "${COMMAND_NAME}" 1> /dev/null && [[ -n "${REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+${TYPE_VALUE}}}}}" ]]; then
+        for i in REPO INSTALL_PATH INSTALLATION TYPE TYPE_VALUE LATEST_INSTALLED_SHA CONFIG; do
+            printf "%s\n" "${i}=\"${!i}\""
+        done | sed -e "s/=/: /g"
     else
         printf "%s\n" "google-drive-upload is not installed system wide."
     fi
@@ -111,8 +133,8 @@ _version_info() {
 
 ###################################################
 # Process all arguments given to the script
-# Globals: 1 variable, 1 function
-#   Variable - HOME
+# Globals: 2 variable, 1 function
+#   Variable - HOME, CONFIG
 #   Functions - _short_help
 # Arguments: Many
 #   ${@} = Flags with argument and file/folder input
@@ -130,8 +152,8 @@ _setup_arguments() {
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
     CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
-    INFO_PATH="${HOME}/.google-drive-upload" INFO_FILE="${INFO_PATH}/google-drive-upload.info"
-    [[ -f "${INFO_PATH}/google-drive-upload.configpath" ]] && CONFIG="$(< "${INFO_PATH}/google-drive-upload.configpath")"
+    INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
+    [[ -f ${CONFIG_INFO} ]] && . "${CONFIG_INFO}"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
     # Configuration variables # Remote gDrive variables
@@ -143,7 +165,7 @@ _setup_arguments() {
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
     _check_config() {
-        [[ ${1} = default* ]] && UPDATE_DEFAULT_CONFIG="true"
+        [[ ${1} = default* ]] && UPDATE_DEFAULT_CONFIG="_update_config"
         { [[ -r ${2} ]] && CONFIG="${2}"; } || {
             printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
         }
@@ -161,8 +183,8 @@ _setup_arguments() {
         case "${1}" in
             -h | --help) _usage ;;
             -D | --debug) DEBUG="true" && export DEBUG ;;
-            -u | --update) _check_debug && _update ;;
-            -U | --uninstall) _check_debug && _update uninstall ;;
+            -u | --update) _check_debug && _update && exit "${?}" ;;
+            --uninstall) _check_debug && _update uninstall && exit "${?}" ;;
             --info) _version_info ;;
             -c | -C | --create-dir)
                 _check_longoptions "${1}" "${2}"
@@ -268,7 +290,7 @@ _setup_arguments() {
     [[ -n ${QUIET} ]] && CURL_PROGRESS="-s"
 
     # Get foldername, prioritise the input given by -C/--create-dir option.
-    FOLDERNAME="${FOLDERNAME:-${FOLDER_INPUT}}"
+    FOLDERNAME="$(_extract_id "${FOLDERNAME:-${FOLDER_INPUT}}")"
 
     unset Aseen && declare -A Aseen
     for input in "${LOCAL_INPUT_ARRAY[@]}"; do
@@ -292,14 +314,14 @@ _setup_arguments() {
 #   Variables - API_URL, API_VERSION, TOKEN URL,
 #               CONFIG, UPDATE_DEFAULT_CONFIG, INFO_PATH,
 #               CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN and ACCESS_TOKEN
-#   Functions - _update_config, _json_value and _print_center
+#   Functions - _update_config, _update_value, _json_value and _print_center
 # Arguments: None
 # Result: read description
 ###################################################
 _check_credentials() {
     # Config file is created automatically after first run
     [[ -r ${CONFIG} ]] &&
-        . "${CONFIG}" && [[ -n ${UPDATE_DEFAULT_CONFIG} ]] && printf "%s\n" "${CONFIG}" >| "${INFO_PATH}/google-drive-upload.configpath"
+        . "${CONFIG}" && "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
 
     ! [[ -t 1 ]] && [[ -z ${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}} ]] && {
         printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
@@ -617,8 +639,10 @@ _process_arguments() {
 main() {
     [[ $# = 0 ]] && _short_help
 
-    UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
-    { . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+    [[ -z ${SELF_SOURCE} ]] && {
+        UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
+        { . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+    }
 
     _check_bash_version && set -o errexit -o noclobber -o pipefail
 
@@ -634,7 +658,7 @@ main() {
             [[ -n ${PARALLEL_UPLOAD} ]] && rm -f "${TMPFILE:?}"*
             export abnormal_exit && if [[ -n ${abnormal_exit} ]]; then
                 printf "\n\n%s\n" "Script exited manually."
-                kill -9 -$$ &
+                kill -- -$$ &
             else
                 _auto_update
             fi
@@ -671,4 +695,4 @@ main() {
     "${QUIET:-_print_center}" "normal" " Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds " "="
 }
 
-main "${@}"
+{ [[ -z ${SOURCED_GUPLOAD} ]] && main "${@}"; } || :

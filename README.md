@@ -30,7 +30,9 @@
 - Latest gdrive api used i.e v3
 - Pretty logging
 - Easy to install and update
-  - Auto update
+  - Self update
+  - [Auto update](#updation)
+  - Can be per-user and invoked per-shell, hence no root access required or global install with root access.
 - An additional sync script for background synchronisation jobs. Read [Synchronisation](#synchronisation) section for more info.
 
 ## Table of Contents
@@ -152,8 +154,6 @@ Default values set by automatic installation script, which are changeable:
 
 **Shell file:** `.bashrc` or `.zshrc` or `.profile`
 
-**Config Path** `${HOME}/.googledrive.conf`
-
 For custom command names, repo, shell file, etc, see advanced installation method.
 
 **Now, for automatic install script, there are two ways:**
@@ -181,6 +181,8 @@ These are the flags that are available in the install.sh script:
 -   <strong>-p | --path <dir_name></strong>
 
     Custom path where you want to install the script.
+
+    Note: For global installs, give path outside of the home dir like /usr/bin and it must be in the executable path already.
 
     ---
 
@@ -224,12 +226,6 @@ These are the flags that are available in the install.sh script:
 
     ---
 
--   <strong>-z | --config <config file path></strong>
-
-    Specify custom config file path, where credentials will be stored or loaded from.
-
-    ---
-
 -   <strong>--sh | --posix</strong>
 
     Force install posix scripts even if system has compatible bash binary present.
@@ -239,6 +235,12 @@ These are the flags that are available in the install.sh script:
 -   <strong>-q | --quiet</strong>
 
     Only show critical error/sucess logs.
+
+    ---
+
+-   <strong>-U | --uninstall</strong>
+
+    Uninstall the script and remove related files.\n
 
     ---
 
@@ -286,8 +288,6 @@ There are two methods:
 1.  Automatic updates
 
     By default, script checks for update after 5 days. Use -t / --time flag of install.sh to modify the interval.
-
-    An update log is saved in `"${HOME}/.gdrive-downloader/update.log"`.
 
 **Note: Above methods always obey the values set by user in advanced installation,**
 **e.g if you have installed the script with different repo, say `myrepo/gdrive-upload`, then the update will be also fetched from the same repo.**
@@ -507,6 +507,12 @@ These are the custom flags that are currently implemented:
 -   <strong>-u | --update</strong>
 
     Update the installed script in your system, if not installed, then install.
+
+    ---
+
+-   <strong>--uninstall</strong>
+
+    Uninstall the script from your system.
 
     ---
 

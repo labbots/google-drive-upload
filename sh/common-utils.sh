@@ -343,8 +343,10 @@ _update_config() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     value_name_update_config="${1}" value_update_config="${2}" config_path_update_config="${3}"
     ! [ -f "${config_path_update_config}" ] && : >| "${config_path_update_config}" # If config file doesn't exist.
+    chmod u+w "${config_path_update_config}"
     printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name_update_config}=" "${config_path_update_config}" || :)" \
         "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}"
+    chmod u-w+r "${config_path_update_config}"
 }
 
 ###################################################

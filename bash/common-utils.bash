@@ -355,10 +355,12 @@ _timeout() {
 ###################################################
 _update_config() {
     [[ $# -lt 3 ]] && printf "Missing arguments\n" && return 1
-    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}"
-    ! [ -f "${CONFIG_PATH}" ] && : >| "${CONFIG_PATH}" # If config file doesn't exist.
-    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${VALUE_NAME}=" "${CONFIG_PATH}" || :)" \
-        "${VALUE_NAME}=\"${VALUE}\"" >| "${CONFIG_PATH}"
+    declare value_name="${1}" value="${2}" config_path="${3}"
+    ! [ -f "${config_path}" ] && : >| "${config_path}" # If config file doesn't exist.
+    chmod u+w "${config_path}"
+    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name}=" "${config_path}" || :)" \
+        "${value_name}=\"${value}\"" >| "${config_path}"
+    chmod u-w+r "${config_path}"
 }
 
 ###################################################
