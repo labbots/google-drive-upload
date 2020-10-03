@@ -51,9 +51,10 @@
 - [Usage](#usage)
   - [Generating Oauth Credentials](#generating-oauth-credentials)
   - [First Run](#first-run)
+  - [Config file](#config)
   - [Upload](#upload)
   - [Upload Script Custom Flags](#upload-script-custom-flags)
-  - [Multiple Inputs](#multiple-inputs)
+  - [Multiple Inputs](#multiple-inputs)  
   - [Resuming Interrupted Uploads](#resuming-interrupted-uploads)
 - [Additional Usage](#additional-usage)
   - [Synchronisation](#synchronisation)
@@ -327,6 +328,46 @@ If you don't have refresh token, script outputs a URL on the terminal script, op
 **Root Folder:** Gdrive folder url/id from your account which you want to set as root folder. You can leave it blank and it takes `root` folder as default.
 
 If everything went fine, all the required credentials have been set, read the next section on how to upload a file/folder.
+
+### Config
+
+After first run, the credentials are saved in config file. By default, the config file is `${HOME}/.googledrive.conf`.
+
+To change the default config file or use a different one temporarily, see `-z / --config` custom in [Upload Script Custom Flags](#upload-script-custom-flags).
+
+This is the format of a config file:
+
+```shell
+CLIENT_ID="client id"
+CLIENT_SECRET="client secret"
+REFRESH_TOKEN="refresh token"
+SYNC_DEFAULT_ARGS="default args of gupload command for gsync"
+ROOT_FOLDER_NAME="root folder name"
+ROOT_FOLDER="root folder id"
+ACCESS_TOKEN="access token"
+ACCESS_TOKEN_EXPIRY="access token expiry"
+```
+
+You can use a config file in multiple machines, the values that are explicitly required are `CLIENT_ID`, `CLIENT_SECRET` and `REFRESH_TOKEN`.
+
+If `ROOT_FOLDER` is not set, then it is asked if running in an interactive terminal, otherwise `root` is used.
+
+`ROOT_FOLDER_NAME`, `ACCESS_TOKEN` and `ACCESS_TOKEN_EXPIRY` are automatically generated using `REFRESH_TOKEN`.
+
+`SYNC_DEFAULT_ARGS` is optional.
+
+A pre-generated config file can be also used where interactive terminal access is not possible, like Continuous Integration, docker, jenkins, etc
+
+Just have to print values to `"${HOME}/.googledrive.conf"`, e.g:
+
+```shell
+printf "%s\n" "CLIENT_ID=\"client id\"
+CLIENT_SECRET=\"client secret\"
+REFRESH_TOKEN=\"refresh token\"
+" >| "${HOME}/.googledrive.conf"
+```
+
+Note: Don't skip those backslashes before the double qoutes, it's necessary to handle spacing.
 
 ### Upload
 
