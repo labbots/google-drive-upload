@@ -164,7 +164,7 @@ For custom command names, repo, shell file, etc, see advanced installation metho
 To install google-drive-upload in your system, you can run the below command:
 
 ```shell
-curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | sh -s
+curl --compressed -Ls https://github.com/labbots/google-drive-upload/raw/master/install.sh | sh -s
 ```
 
 and done.
@@ -262,7 +262,7 @@ Now, run the script and use flags according to your usecase.
 E.g:
 
 ```shell
-curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | sh -s -- -r username/reponame -p somepath -s shell_file -c command_name -B branch_name
+curl --compressed -Ls https://github.com/labbots/google-drive-upload/raw/master/install.sh | sh -s -- -r username/reponame -p somepath -s shell_file -c command_name -B branch_name
 ```
 </details>
 
@@ -857,7 +857,7 @@ There are two methods:
 1.  Run the installation script again with -U/--uninstall flag
 
     ```shell
-    curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | sh -s -- --uninstall
+    curl --compressed -Ls https://github.com/labbots/google-drive-upload/raw/master/install.sh | sh -s -- --uninstall
     ```
 
     Yes, just run the installation script again with the flag and voila, it's done.

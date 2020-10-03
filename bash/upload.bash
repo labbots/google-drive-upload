@@ -84,7 +84,7 @@ _update() {
     _print_center "justify" "Fetching ${job} script.." "-"
     declare repo="${REPO:-labbots/google-drive-upload}" type_value="${TYPE_VALUE:-latest}"
     { [[ ${TYPE:-} != branch ]] && type_value="$(_get_latest_sha release "${type_value}" "${repo}")"; } || :
-    if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${type_value}/install.sh")"; then
+    if script="$(curl --compressed -Ls "https://github.com/${repo}/raw/${type_value}/install.sh")"; then
         _clear_line 1
         printf "%s\n" "${script}" | bash -s -- ${job_uninstall:-} --skip-internet-check
         current_time="$(printf "%(%s)T\\n" "-1")"

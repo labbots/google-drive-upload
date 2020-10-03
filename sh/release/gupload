@@ -971,7 +971,7 @@ _update() {
     _print_center "justify" "Fetching ${job_update} script.." "-"
     repo_update="${REPO:-labbots/google-drive-upload}" type_value_update="${TYPE_VALUE:-latest}"
     { [ "${TYPE:-}" != branch ] && type_value_update="$(_get_latest_sha release "${type_value_update}" "${repo_update}")"; } || :
-    if script_update="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo_update}/${type_value_update}/install.sh")"; then
+    if script_update="$(curl --compressed -Ls "https://github.com/${repo_update}/raw/${type_value_update}/install.sh")"; then
         _clear_line 1
         printf "%s\n" "${script_update}" | sh -s -- ${job_uninstall:-} --skip-internet-check
         current_time="$(date +'%s')"
