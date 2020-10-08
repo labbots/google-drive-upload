@@ -34,7 +34,7 @@ jobs:
       run: |
           set -e
           sh install.sh
-              PATH="${HOME}/.google-drive-upload:${PATH}"
+              PATH="${HOME}/.google-drive-upload/bin:${PATH}"
               gupload --info && gsync --help
           sh install.sh -U && sh install.sh --posix -B master
               gupload --info && gsync --help

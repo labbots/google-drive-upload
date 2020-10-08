@@ -480,7 +480,7 @@ _start() {
 
         chmod "${GLOBAL_PERMS:-u+x+r-w}" "${INSTALL_PATH}/${COMMAND_NAME}"
         [ -z "${SKIP_SYNC}" ] && chmod "${GLOBAL_PERMS:-u+x+r-w}" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
-        chmod +w "${CONFIG_INFO}" && printf "%s\n" "CONFIG=\"${CONFIG}\"" >| "${CONFIG_INFO}" && chmod "${GLOBAL_PERMS:-u+x+r-w}" "${CONFIG_INFO}"
+        chmod -f +w "${CONFIG_INFO}" && printf "%s\n" "CONFIG=\"${CONFIG}\"" >| "${CONFIG_INFO}" && chmod "${GLOBAL_PERMS:-u+x+r-w}" "${CONFIG_INFO}"
 
         [ "${GLOBAL_INSTALL}" = false ] && {
             _PATH="PATH=\"${INSTALL_PATH}:\${PATH}\""
