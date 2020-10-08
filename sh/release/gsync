@@ -1038,8 +1038,6 @@ main() {
     if [ -z "${SELF_SOURCE}" ]; then
         UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}" && SOURCE_UTILS=". '${UTILS_FOLDER}/common-utils.sh'"
         eval "${SOURCE_UTILS}" || { printf "Error: Unable to source util files.\n" && exit 1; }
-    else
-        SOURCE_UTILS="SOURCED_GUPLOAD=true . \"${0}\"" && eval "${SOURCE_UTILS}"
     fi
 
     _setup_arguments "${@}"
