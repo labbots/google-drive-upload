@@ -513,7 +513,7 @@ _share_id() {
         -H "Authorization: Bearer ${token_share_id}" \
         -H "Content-Type: application/json; charset=UTF-8" \
         -d "${post_data_share_id}" \
-        "${API_URL}/drive/${API_VERSION}/files/${id_share_id}/permissions" || :)" && _clear_line 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files/${id_share_id}/permissions?supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     { printf "%s\n" "${response_share_id}" | _json_value id 1 1 2>| /dev/null 1>&2 && return 0; } ||

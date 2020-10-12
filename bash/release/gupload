@@ -897,7 +897,7 @@ _share_id() {
         -H "Authorization: Bearer ${token}" \
         -H "Content-Type: application/json; charset=UTF-8" \
         -d "${share_post_data}" \
-        "${API_URL}/drive/${API_VERSION}/files/${id}/permissions" || :)" && _clear_line 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files/${id}/permissions?supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     { _json_value id 1 1 <<< "${share_response}" 2>| /dev/null 1>&2 && return 0; } ||
