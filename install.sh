@@ -80,7 +80,7 @@ _check_dependencies() {
     posix_check_dependencies="${1:-0}"
     unset error_list warning_list
 
-    for program in curl find xargs mkdir rm grep sed; do
+    for program in curl find xargs mkdir rm grep sed sleep ps; do
         command -v "${program}" 2>| /dev/null 1>&2 || error_list="${error_list}\n${program}"
     done
 
@@ -88,13 +88,11 @@ _check_dependencies() {
         error_list="${error_list}\n\"file or mimetype\""
 
     [ "${posix_check_dependencies}" != 0 ] &&
-        for program in awk cat date ps sleep; do
+        for program in awk cat date; do
             command -v "${program}" 2>| /dev/null 1>&2 || error_list="${error_list}\n${program}"
         done
 
-    for program in ps tail; do
-        command -v "${program}" 2>| /dev/null 1>&2 || warning_list="${warning_list}\n${program}"
-    done
+    command -v tail 2>| /dev/null 1>&2 || warning_list="${warning_list}\ntail"
 
     [ -n "${warning_list}" ] && {
         [ -z "${UNINSTALL}" ] && {

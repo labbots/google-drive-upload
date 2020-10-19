@@ -33,9 +33,10 @@ _get_token_and_update() {
     RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
     ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"
     if [ -n "${ACCESS_TOKEN}" ]; then
-        [ -n "${UPDATE}" ] && ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)"
-        "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-        "${UPDATE:-:}" ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+        [ -n "${UPDATE}" ] && {
+            _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
+            _update_config ACCESS_TOKEN_EXPIRY "$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))" "${CONFIG}"
+        }
     else
         _print_center "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
         printf "%s\n" "${RESPONSE}" 1>&2
@@ -46,7 +47,7 @@ _get_token_and_update() {
 
 [ "${1}" = create ] || [ "${1}" = refresh ] || _short_help
 
-[ "${2}" = update ] && UPDATE="_update_config"
+{ [ "${2}" = update ] && UPDATE="true"; } || unset UPDATE
 
 UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}"
 { . "${UTILS_FOLDER}"/common-utils.sh; } || { printf "Error: Unable to source util files.\n" && exit 1; }
@@ -57,8 +58,6 @@ _print_center "justify" "Starting script.." "-"
 
 CLIENT_ID=""
 CLIENT_SECRET=""
-API_URL="https://www.googleapis.com"
-API_VERSION="v3"
 SCOPE="https://www.googleapis.com/auth/drive"
 REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
 TOKEN_URL="https://accounts.google.com/o/oauth2/token"
@@ -69,7 +68,7 @@ CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 # shellcheck source=/dev/null
 [ -f "${CONFIG}" ] && . "${CONFIG}"
 
-! _is_terminal && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
+! [ -t 2 ] && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
     printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
     printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
 }
