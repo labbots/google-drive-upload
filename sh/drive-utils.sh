@@ -1,6 +1,28 @@
 #!/usr/bin/env sh
 
 ###################################################
+# Method to regenerate access_token ( also updates in config ).
+# Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
+# Globals: 8 variables, 2 functions
+#   Variables - CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, TOKEN_URL, CONFIG, API_URL, API_VERSION and QUIET
+#   Functions - _update_config and _print_center
+# Result: Update access_token and expiry else print error
+###################################################
+_get_access_token_and_update() {
+    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
+    if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
+        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
+        { ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)" &&
+            _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"; } || { "${QUIET:-_print_center}" "normal" "Error: Couldn't update access token expiry." "-" 1>&2 && return 1; }
+    else
+        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
+        printf "%s\n" "${RESPONSE}" 1>&2
+        return 1
+    fi
+    return 0
+}
+
+###################################################
 # Used in collecting file properties from output json after a file has been uploaded/cloned
 # Also handles logging in log file if LOG_FILE_ID is set
 # Globals: 1 variables, 2 functions

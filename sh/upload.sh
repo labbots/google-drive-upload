@@ -353,24 +353,6 @@ _check_credentials() {
         read -r CLIENT_SECRET && client_secret=1
     done && [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
 
-    # Method to regenerate access_token ( also updates in config ).
-    # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
-    # Requirements: Refresh Token
-    # shellcheck disable=SC2120
-    _get_token_and_update() {
-        RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
-        if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
-            _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-            { ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)" &&
-                _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"; } || { "${QUIET:-_print_center}" "normal" "Error: Couldn't update access token expiry." "-" 1>&2 && return 1; }
-        else
-            "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
-            printf "%s\n" "${RESPONSE}" 1>&2
-            return 1
-        fi
-        return 0
-    }
-
     # Method to obtain refresh_token.
     # Requirements: client_id, client_secret and authorization code.
     [ -z "${REFRESH_TOKEN}" ] && {
@@ -378,7 +360,7 @@ _check_credentials() {
         printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
         read -r REFRESH_TOKEN
         if [ -n "${REFRESH_TOKEN}" ]; then
-            { printf "\n\n" && _get_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
+            { printf "\n\n" && _get_access_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
         else
             for _ in 1 2; do _clear_line 1; done
             "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
@@ -394,11 +376,11 @@ _check_credentials() {
             _clear_line 1 1>&2
 
             REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1 || :)"
-            { _get_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
+            { _get_access_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
         fi
     }
 
-    [ -z "${ACCESS_TOKEN}" ] || [ "${ACCESS_TOKEN_EXPIRY}" -lt "$(date +'%s')" ] && { _get_token_and_update || return 1; }
+    [ -z "${ACCESS_TOKEN}" ] || [ "${ACCESS_TOKEN_EXPIRY}" -lt "$(date +'%s')" ] && { _get_access_token_and_update || return 1; }
 
     return 0
 }
@@ -477,22 +459,23 @@ _setup_workspace() {
 }
 
 ###################################################
-# Process all the values in "${FINAL_LOCAL_INPUT_ARRAY}" & "${FINAL_ID_INPUT_ARRAY}"
-# Globals: 20 variables, 14 functions
+# Process all the values in "${FINAL_LOCAL_INPUT_ARRAY[@]}" & "${FINAL_ID_INPUT_ARRAY[@]}"
+# Globals: 22 variables, 16 functions
 #   Variables - FINAL_LOCAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
 #               WORKSPACE_FOLDER_ID, UPLOAD_MODE, SKIP_DUPLICATES, OVERWRITE, SHARE,
-#               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, LOG_FILE_ID
+#               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, TOKEN_URL, LOG_FILE_ID
 #               FILE_ID, FILE_LINK, FINAL_ID_INPUT_ARRAY ( array )
 #               PARALLEL_UPLOAD, QUIET, NO_OF_PARALLEL_JOBS, TMPFILE
 #   Functions - _print_center, _clear_line, _newline, _support_ansi_escapes, _print_center_quiet
-#               _upload_file, _share_id, _dirname,
-#               _create_directory, _json_value, _url_encode, _check_existing_file
-#               _clone_file
+#               _upload_file, _share_id, _is_terminal, _dirname,
+#               _create_directory, _json_value, _url_encode, _check_existing_file, _bytes_to_human
+#               _clone_file, _get_access_token_and_update
 # Arguments: None
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
 _process_arguments() {
-    export API_URL API_VERSION ACCESS_TOKEN LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY UTILS_FOLDER SOURCE_UTILS \
+    export API_URL API_VERSION TOKEN_URL ACCESS_TOKEN \
+        LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY SOURCE_UTILS UTILS_FOLDER \
         QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG PARALLEL_UPLOAD
 
     # on successful uploads
