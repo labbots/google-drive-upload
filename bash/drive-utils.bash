@@ -23,6 +23,23 @@ _get_access_token_and_update() {
 }
 
 ###################################################
+# A small function to get rootdir id for files in sub folder uploads
+# Globals: 1 variable, 1 function
+#   Variables - DIRIDS
+#   Functions - _dirname
+# Arguments: 1
+#   ${1} = filename
+# Result: read discription
+###################################################
+_get_rootdir_id() {
+    declare file="${1:?Error: give filename}" __rootdir __temp
+    __rootdir="$(_dirname "${file}")"
+    __temp="$(grep -F "|:_//_:|${__rootdir}|:_//_:|" <<< "${DIRIDS:?Error: DIRIDS Missing}" || :)"
+    printf "%s\n" "${__temp%%"|:_//_:|${__rootdir}|:_//_:|"}"
+    return 0
+}
+
+###################################################
 # Used in collecting file properties from output json after a file has been uploaded/cloned
 # Also handles logging in log file if LOG_FILE_ID is set
 # Globals: 1 variables, 2 functions
@@ -351,22 +368,21 @@ _upload_file() {
 #   Functions - _upload_file
 # Arguments: 3
 #   ${1} = parse or norparse
-#   ${2} = if ${1} = parse; then final_list line ; else file to upload; fi
+#   ${2} = file path
 #   ${3} = if ${1} != parse; gdrive folder id to upload; fi
-# Result: set SUCCESS var on succes
+# Result: set SUCCESS var on success
 ###################################################
 _upload_file_main() {
     [[ $# -lt 2 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    [[ ${1} = parse ]] && declare line="${2}" && file="${line##*"|:_//_:|"}" &&
-        dirid="$(_tmp="${line%%"|:_//_:|"${file}}" &&
-            printf "%s\n" "${_tmp##*"|:_//_:|"}")"
+    declare file="${2}" dirid
+    { [[ ${1} = parse ]] && dirid="$(_get_rootdir_id "${file}")"; } || dirid="${3}"
 
     retry="${RETRY:-0}" && unset RETURN_STATUS
     until [[ ${retry} -le 0 ]] && [[ -n ${RETURN_STATUS} ]]; do
         if [[ -n ${4} ]]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file:-${2}}" "${dirid:-${3}}" "${ACCESS_TOKEN}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
+            _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" "${ACCESS_TOKEN}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
         else
-            _upload_file "${UPLOAD_MODE:-create}" "${file:-${2}}" "${dirid:-${3}}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
+            _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
         fi
         RETURN_STATUS=2 retry="$((retry - 1))" && continue
     done
@@ -382,19 +398,19 @@ _upload_file_main() {
 # Arguments: 4
 #   ${1} = parallel or normal
 #   ${2} = parse or norparse
-#   ${3} = if ${2} = parse; then final_list ; else filenames ; fi
+#   ${3} = filenames with full path
 #   ${4} = if ${2} != parse; then gdrive folder id to upload; fi
 # Result: read discription, set SUCCESS_STATUS & ERROR_STATUS
 ###################################################
 _upload_folder() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare mode="${1}" list="${3}" && PARSE_MODE="${2}" ID="${4:-}" && export PARSE_MODE ID
+    declare mode="${1}" files="${3}" && PARSE_MODE="${2}" ID="${4:-}" && export PARSE_MODE ID
     case "${mode}" in
         normal)
             [[ ${PARSE_MODE} = parse ]] && _clear_line 1 && _newline "\n"
 
-            while read -u 4 -r line; do
-                _upload_file_main "${PARSE_MODE}" "${line}" "${ID}"
+            while read -u 4 -r file; do
+                _upload_file_main "${PARSE_MODE}" "${file}" "${ID}"
                 : "$((RETURN_STATUS < 2 ? (SUCCESS_STATUS += 1) : (ERROR_STATUS += 1)))"
                 if [[ -n ${VERBOSE:-${VERBOSE_PROGRESS}} ]]; then
                     _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && _newline "\n"
@@ -402,7 +418,7 @@ _upload_folder() {
                     for _ in 1 2; do _clear_line 1; done
                     _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "="
                 fi
-            done 4<<< "${list}"
+            done 4<<< "${files}"
             ;;
         parallel)
             NO_OF_PARALLEL_JOBS_FINAL="$((NO_OF_PARALLEL_JOBS > NO_OF_FILES ? NO_OF_FILES : NO_OF_PARALLEL_JOBS))"
@@ -410,7 +426,7 @@ _upload_folder() {
             [[ -f "${TMPFILE}"ERROR ]] && rm "${TMPFILE}"ERROR
 
             # shellcheck disable=SC2016
-            printf "%s\n" "${list}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} bash -c '
+            printf "%s\n" "${files}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} bash -c '
             _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
             ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
             pid="${!}"

@@ -161,23 +161,6 @@ _get_columns_size() {
 }
 
 ###################################################
-# A small function generate final list for folder uploads
-# Globals: 1 variable, 1 function
-#   Variables - DIRIDS
-#   Functions - _dirname
-# Arguments: 1
-#   ${1} = filename
-# Result: read discription
-###################################################
-_gen_final_list() {
-    file_gen_final_list="${1}"
-    rootdir_gen_final_list="$(_dirname "${file_gen_final_list}")"
-    printf "%s\n" "${rootdir_gen_final_list}|:_//_:|$(temp_gen_final_list="$(printf "%s\n" "${DIRIDS}" | grep "|:_//_:|${rootdir_gen_final_list}|:_//_:|" || :)" &&
-        printf "%s\n" "${temp_gen_final_list%%"|:_//_:|${rootdir_gen_final_list}|:_//_:|"}")|:_//_:|${file_gen_final_list}"
-    return 0
-}
-
-###################################################
 # Fetch latest commit sha of release or branch
 # Do not use github rest api because rate limit error occurs
 # Globals: None

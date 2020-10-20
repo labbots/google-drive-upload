@@ -448,7 +448,7 @@ _setup_workspace() {
 
 ###################################################
 # Process all the values in "${FINAL_LOCAL_INPUT_ARRAY[@]}" & "${FINAL_ID_INPUT_ARRAY[@]}"
-# Globals: 22 variables, 16 functions
+# Globals: 22 variables, 17 functions
 #   Variables - FINAL_LOCAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
 #               WORKSPACE_FOLDER_ID, UPLOAD_MODE, SKIP_DUPLICATES, OVERWRITE, SHARE,
 #               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, TOKEN_URL, LOG_FILE_ID
@@ -457,7 +457,7 @@ _setup_workspace() {
 #   Functions - _print_center, _clear_line, _newline, _support_ansi_escapes, _print_center_quiet
 #               _upload_file, _share_id, _is_terminal, _dirname,
 #               _create_directory, _json_value, _url_encode, _check_existing_file, _bytes_to_human
-#               _clone_file, _get_access_token_and_update
+#               _clone_file, _get_access_token_and_update, _get_rootdir_id
 # Arguments: None
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
@@ -468,7 +468,7 @@ _process_arguments() {
 
     export -f _bytes_to_human _dirname _json_value _url_encode _support_ansi_escapes _newline _print_center_quiet _print_center _clear_line \
         _get_access_token_and_update _check_existing_file _upload_file _upload_file_main _clone_file _collect_file_info _generate_upload_link _upload_file_from_uri _full_upload \
-        _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _gen_final_list
+        _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _get_rootdir_id
 
     # on successful uploads
     _share_and_print_link() {
@@ -546,7 +546,7 @@ _process_arguments() {
                     unset status DIRIDS
                     for dir in "${DIRNAMES[@]}"; do
                         [[ -n ${status} ]] && __dir="$(_dirname "${dir}")" &&
-                            __temp="$(printf "%s\n" "${DIRIDS}" | grep "|:_//_:|${__dir}|:_//_:|")" &&
+                            __temp="$(printf "%s\n" "${DIRIDS}" | grep -F "|:_//_:|${__dir}|:_//_:|")" &&
                             NEXTROOTDIRID="${__temp%%"|:_//_:|${__dir}|:_//_:|"}"
 
                         NEWDIR="${dir##*/}" && _print_center "justify" "Name: ${NEWDIR}" "-" 1>&2
@@ -558,16 +558,11 @@ _process_arguments() {
 
                         for _ in 1 2; do _clear_line 1 1>&2; done
                         "${EXTRA_LOG}" "justify" "Status" ": $((status += 1)) / ${NO_OF_FOLDERS}" "=" 1>&2
-                    done
-                    for _ in 1 2; do _clear_line 1; done
+                    done && export DIRIDS
 
-                    "${EXTRA_LOG}" "justify" "Preparing to upload.." "-"
+                    _clear_line 1
 
-                    export DIRIDS && cores="$(nproc 2>| /dev/null || sysctl -n hw.logicalcpu 2>| /dev/null)"
-                    mapfile -t FINAL_LIST <<< "$(printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-${cores}}" -I {} bash -c '
-                    _gen_final_list "{}"')"
-
-                    _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "$(printf "%s\n" "${FINAL_LIST[@]}")"
+                    _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "$(printf "%s\n" "${FILENAMES[@]}")"
                     [[ -n ${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}} ]] && _newline "\n\n"
                 else
                     for _ in 1 2 3; do _clear_line 1; done && EMPTY=1

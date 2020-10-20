@@ -161,23 +161,6 @@ _get_columns_size() {
 }
 
 ###################################################
-# A small function generate final list for folder uploads
-# Globals: 1 variable, 1 function
-#   Variables - DIRIDS
-#   Functions - _dirname
-# Arguments: 1
-#   ${1} = filename
-# Result: read discription
-###################################################
-_gen_final_list() {
-    file_gen_final_list="${1}"
-    rootdir_gen_final_list="$(_dirname "${file_gen_final_list}")"
-    printf "%s\n" "${rootdir_gen_final_list}|:_//_:|$(temp_gen_final_list="$(printf "%s\n" "${DIRIDS}" | grep "|:_//_:|${rootdir_gen_final_list}|:_//_:|" || :)" &&
-        printf "%s\n" "${temp_gen_final_list%%"|:_//_:|${rootdir_gen_final_list}|:_//_:|"}")|:_//_:|${file_gen_final_list}"
-    return 0
-}
-
-###################################################
 # Fetch latest commit sha of release or branch
 # Do not use github rest api because rate limit error occurs
 # Globals: None
@@ -386,6 +369,23 @@ _get_access_token_and_update() {
         printf "%s\n" "${RESPONSE}" 1>&2
         return 1
     fi
+    return 0
+}
+
+###################################################
+# A small function to get rootdir id for files in sub folder uploads
+# Globals: 1 variable, 1 function
+#   Variables - DIRIDS
+#   Functions - _dirname
+# Arguments: 1
+#   ${1} = filename
+# Result: read discription
+###################################################
+_get_rootdir_id() {
+    file_gen_final_list="${1:?Error: give filename}"
+    rootdir_gen_final_list="$(_dirname "${file_gen_final_list}")"
+    temp_gen_final_list="$(printf "%s\n" "${DIRIDS:?Error: DIRIDS Missing}" | grep -F "|:_//_:|${rootdir_gen_final_list}|:_//_:|" || :)"
+    printf "%s\n" "${temp_gen_final_list%%"|:_//_:|${rootdir_gen_final_list}|:_//_:|"}"
     return 0
 }
 
@@ -720,22 +720,21 @@ _upload_file() {
 #   Functions - _upload_file
 # Arguments: 3
 #   ${1} = parse or norparse
-#   ${2} = if ${1} = parse; then final_list line ; else file to upload; fi
+#   ${2} = file path
 #   ${3} = if ${1} != parse; gdrive folder id to upload; fi
-# Result: set SUCCESS var on succes
+# Result: set SUCCESS var on success
 ###################################################
 _upload_file_main() {
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    [ "${1}" = parse ] && line_upload_file_main="${2}" && file_upload_file_main="${line_upload_file_main##*"|:_//_:|"}" &&
-        dirid_upload_file_main="$(_tmp="${line_upload_file_main%%"|:_//_:|"${file_upload_file_main}}" &&
-            printf "%s\n" "${_tmp##*"|:_//_:|"}")"
+    file_upload_file_main="${2}"
+    { [ "${1}" = parse ] && dirid_upload_file_main="$(_get_rootdir_id "${file_upload_file_main}")"; } || dirid_upload_file_main="${3}"
 
     retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
     until [ "${retry_upload_file_main}" -le 0 ] && [ -n "${RETURN_STATUS}" ]; do
         if [ -n "${4}" ]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
+            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" "${ACCESS_TOKEN}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
         else
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
+            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
         fi
         RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue
     done
@@ -751,19 +750,19 @@ _upload_file_main() {
 # Arguments: 4
 #   ${1} = parallel or normal
 #   ${2} = parse or norparse
-#   ${3} = if ${2} = parse; then final_list ; else filenames ; fi
+#   ${3} = filenames with full path
 #   ${4} = if ${2} != parse; then gdrive folder id to upload; fi
 # Result: read discription, set SUCCESS_STATUS & ERROR_STATUS
 ###################################################
 _upload_folder() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
-    mode_upload_folder="${1}" PARSE_MODE="${2}" list_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
+    mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
     case "${mode_upload_folder}" in
         normal)
             [ "${PARSE_MODE}" = parse ] && _clear_line 1 && _newline "\n"
 
-            while read -r line <&4; do
-                _upload_file_main "${PARSE_MODE}" "${line}" "${ID}"
+            while read -r file <&4; do
+                _upload_file_main "${PARSE_MODE}" "${file}" "${ID}"
                 : "$((RETURN_STATUS < 2 ? (SUCCESS_STATUS += 1) : (ERROR_STATUS += 1)))"
                 if [ -n "${VERBOSE:-${VERBOSE_PROGRESS}}" ]; then
                     _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && _newline "\n"
@@ -772,7 +771,7 @@ _upload_folder() {
                     _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "="
                 fi
             done 4<< EOF
-$(printf "%s\n" "${list_upload_folder}")
+$(printf "%s\n" "${files_upload_folder}")
 EOF
             ;;
         parallel)
@@ -781,7 +780,7 @@ EOF
             [ -f "${TMPFILE}"ERROR ] && rm "${TMPFILE}"ERROR
 
             # shellcheck disable=SC2016
-            (printf "%s\n" "${list_upload_folder}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} sh -c '
+            (printf "%s\n" "${files_upload_folder}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} sh -c '
             eval "${SOURCE_UTILS}"
             _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
             ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR) &
@@ -1369,7 +1368,7 @@ _setup_workspace() {
 
 ###################################################
 # Process all the values in "${FINAL_LOCAL_INPUT_ARRAY[@]}" & "${FINAL_ID_INPUT_ARRAY[@]}"
-# Globals: 22 variables, 16 functions
+# Globals: 22 variables, 17 functions
 #   Variables - FINAL_LOCAL_INPUT_ARRAY ( array ), ACCESS_TOKEN, VERBOSE, VERBOSE_PROGRESS
 #               WORKSPACE_FOLDER_ID, UPLOAD_MODE, SKIP_DUPLICATES, OVERWRITE, SHARE,
 #               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, TOKEN_URL, LOG_FILE_ID
@@ -1378,7 +1377,7 @@ _setup_workspace() {
 #   Functions - _print_center, _clear_line, _newline, _support_ansi_escapes, _print_center_quiet
 #               _upload_file, _share_id, _is_terminal, _dirname,
 #               _create_directory, _json_value, _url_encode, _check_existing_file, _bytes_to_human
-#               _clone_file, _get_access_token_and_update
+#               _clone_file, _get_access_token_and_update, _get_rootdir_id
 # Arguments: None
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
@@ -1467,7 +1466,7 @@ _process_arguments() {
                     unset status
                     while read -r dir <&4 && { [ -n "${dir}" ] || continue; }; do
                         [ -n "${status}" ] && __dir="$(_dirname "${dir}")" &&
-                            __temp="$(printf "%s\n" "${DIRIDS}" | grep "|:_//_:|${__dir}|:_//_:|")" &&
+                            __temp="$(printf "%s\n" "${DIRIDS}" | grep -F "|:_//_:|${__dir}|:_//_:|")" &&
                             NEXTROOTDIRID="${__temp%%"|:_//_:|${__dir}|:_//_:|"}"
 
                         NEWDIR="${dir##*/}" && _print_center "justify" "Name: ${NEWDIR}" "-" 1>&2
@@ -1482,16 +1481,11 @@ _process_arguments() {
                     done 4<< EOF
 $(printf "%s\n" "${DIRNAMES}")
 EOF
-                    for _ in 1 2; do _clear_line 1; done
+                    export DIRIDS
 
-                    "${EXTRA_LOG}" "justify" "Preparing to upload.." "-"
+                    _clear_line 1
 
-                    export DIRIDS && cores="$(($(nproc 2>| /dev/null || sysctl -n hw.logicalcpu 2>| /dev/null)))"
-                    # shellcheck disable=SC2016
-                    FINAL_LIST="$(printf "%s\n" "${FILENAMES}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-${cores}}" -I {} sh -c '
-                    eval "${SOURCE_UTILS}" && _gen_final_list "{}" ')"
-
-                    _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "${FINAL_LIST}"
+                    _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "${FILENAMES}"
                     [ -n "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n\n"
                 else
                     for _ in 1 2 3; do _clear_line 1; done && EMPTY=1

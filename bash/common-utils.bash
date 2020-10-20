@@ -180,23 +180,6 @@ _extract_id() {
 }
 
 ###################################################
-# A small function generate final list for folder uploads
-# Globals: 1 variable, 1 function
-#   Variables - DIRIDS
-#   Functions - _dirname
-# Arguments: 1
-#   ${1} = filename
-# Result: read discription
-###################################################
-_gen_final_list() {
-    declare file="${1}" __rootdir
-    __rootdir="$(_dirname "${file}")"
-    printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(grep "|:_//_:|${__rootdir}|:_//_:|" <<< "${DIRIDS}" || :)" &&
-        printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}"
-    return 0
-}
-
-###################################################
 # Fetch latest commit sha of release or branch
 # Do not use github rest api because rate limit error occurs
 # Globals: None
