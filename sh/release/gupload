@@ -412,7 +412,7 @@ _get_rootdir_id() {
 ###################################################
 _collect_file_info() {
     json_collect_file_info="${1}" info_collect_file_info=""
-    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}" && return 1; }
+    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}"; }
     { [ -z "${LOG_FILE_ID}" ] || [ -d "${LOG_FILE_ID}" ]; } && return 0
     info_collect_file_info="$(
         printf "%s\n" "Link: https://drive.google.com/open?id=${FILE_ID}"
@@ -428,9 +428,20 @@ _collect_file_info() {
 # Error logging wrapper
 ###################################################
 _error_logging_upload() {
+    log_error_logging_upload="${2}"
     "${QUIET:-_print_center}" "justify" "Upload ERROR" ", ${1:-} not ${STRING:-uploaded}." "=" 1>&2
-    printf "%s\n" "${2}" 1>&2
+    case "${log_error_logging_upload}" in
+        # https://github.com/rclone/rclone/issues/3857#issuecomment-573413789
+        *'"message": "User rate limit exceeded."'*)
+            printf "%s\n\n%s\n" "${log_error_logging_upload}" \
+                "Today's upload limit reached for this account. Use another account to upload or wait for tomorrow." 1>&2
+            # Never retry if upload limit reached
+            export RETRY=0
+            ;;
+        '' | *) printf "%s\n" "${log_error_logging_upload}" 1>&2 ;;
+    esac
     printf "\n\n\n" 1>&2
+    return 1
 }
 
 ###################################################
@@ -543,8 +554,12 @@ _generate_upload_link() {
         -D - || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
-    uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)"
-    { [ -n "${uploadlink_upload_file}" ] && return 0; } || return 1
+    case "${uploadlink_upload_file}" in
+        *'ocation: '*'upload_id'*) uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)" && return 0 ;;
+        '' | *) return 1 ;;
+    esac
+
+    return 0
 }
 
 # Curl command to push the file to google drive.
@@ -587,7 +602,7 @@ _remove_upload_session() {
 
 # wrapper to fully upload a file from scratch
 _full_upload() {
-    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}" && return 1; }
+    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}"; }
     _log_upload_session
     _upload_file_from_uri
     _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1
@@ -652,7 +667,7 @@ _upload_file() {
                 "${QUIET:-_print_center}" "justify" "${slug_upload_file} already exists." "=" && return 0
             else
                 request_method_upload_file="PATCH"
-                _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" || { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}" && return 1; }
+                _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" || { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}"; }
                 url_upload_file="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id_upload_file}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"addParents\": [\"${folder_id_upload_file}\"]}"
@@ -676,7 +691,7 @@ _upload_file() {
     # https://developers.google.com/drive/api/v3/manage-uploads
     if [ -r "${__file_upload_file}" ]; then
         uploadlink_upload_file="$(cat "${__file_upload_file}" || :)"
-        http_code_upload_file="$(curl --compressed -s -X PUT "${uploadlink_upload_file}" --write-out %"{http_code}")" || :
+        http_code_upload_file="$(curl --compressed -s -X PUT "${uploadlink_upload_file}" -o /dev/null --write-out %"{http_code}")" || :
         case "${http_code_upload_file}" in
             308) # Active Resumable URI give 308 status
                 uploaded_range_upload_file="$(raw_upload_file="$(curl --compressed -s -X PUT \
@@ -697,8 +712,8 @@ _upload_file() {
                     _full_upload || return 1
                 fi
                 ;;
-            40[0-9]) # Dead Resumable URI give 40* status
-                _full_upload
+            4[0-9][0-9] | 000) # Dead Resumable URI give 40* status
+                _full_upload || return 1
                 ;;
             201 | 200) # Completed Resumable URI give 20* status
                 upload_body_upload_file="${http_code_upload_file}"
@@ -844,7 +859,7 @@ _clone_file() {
                 _print_center "justify" "Overwriting file.." "-"
                 { _file_id_clone_file="$(printf "%s\n" "${file_check_json_clone_file}" | _json_value id 1 1)" &&
                     post_data_clone_file="$(_drive_info "${_file_id_clone_file}" "parents,writersCanShare")"; } ||
-                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}" && return 1; }
+                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}"; }
                 if [ "${_file_id_clone_file}" != "${file_id_clone_file}" ]; then
                     _api_request -s \
                         -X DELETE \
