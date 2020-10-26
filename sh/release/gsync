@@ -301,7 +301,7 @@ _print_center() {
 _support_ansi_escapes() {
     unset ansi_escapes
     case "${TERM}" in
-        xterm* | rxvt* | urxvt* | linux* | vt*) ansi_escapes="true" ;;
+        xterm* | rxvt* | urxvt* | linux* | vt* | screen*) ansi_escapes="true" ;;
     esac
     { [ -t 2 ] && [ -n "${ansi_escapes}" ] && return 0; } || return 1
 }
