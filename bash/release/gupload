@@ -60,8 +60,7 @@ _check_debug() {
                 else
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
                 fi
-                CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#"
-                export CURL_PROGRESS EXTRA_LOG CURL_PROGRESS_EXTRA
+                export CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#" SUPPORT_ANSI_ESCAPES="true"
             else
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
@@ -1562,6 +1561,9 @@ main() {
 
     _cleanup() {
         {
+            # unhide the cursor if hidden
+            [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25h"
+
             [[ -n ${PARALLEL_UPLOAD} ]] && rm -f "${TMPFILE:?}"*
 
             # manually kill all script children pids
@@ -1601,6 +1603,9 @@ main() {
         { "${QUIET:-_print_center}" "normal" "[ Error: Workspace setup failed ]" "=" && exit 1; }
     _print_center "justify" "Workspace Folder: ${WORKSPACE_FOLDER_NAME}" "="
     _print_center "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
+
+    # hide the cursor if ansi escapes are supported
+    [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25l"
 
     _process_arguments
 

@@ -663,6 +663,9 @@ main() {
 
     _cleanup() {
         {
+            # unhide the cursor if hidden
+            [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\033[?25h"
+
             [ -n "${PARALLEL_UPLOAD}" ] && rm -f "${TMPFILE:?}"*
 
             # manually kill all script children pids
@@ -702,6 +705,9 @@ main() {
         { "${QUIET:-_print_center}" "normal" "[ Error: Workspace setup failed ]" "=" && exit 1; }
     _print_center "justify" "Workspace Folder: ${WORKSPACE_FOLDER_NAME}" "="
     "${HIDE_INFO:-_print_center}" "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
+
+    # hide the cursor if ansi escapes are supported
+    [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\033[?25l"
 
     _process_arguments
 

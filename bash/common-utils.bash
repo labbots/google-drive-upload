@@ -59,8 +59,7 @@ _check_debug() {
                 else
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
                 fi
-                CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#"
-                export CURL_PROGRESS EXTRA_LOG CURL_PROGRESS_EXTRA
+                export CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#" SUPPORT_ANSI_ESCAPES="true"
             else
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
