@@ -25,36 +25,14 @@ Usage:
     exit 0
 }
 
-# Method to regenerate access_token ( also updates in config ).
-# Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
-# Requirements: Refresh Token
-# shellcheck disable=SC2120
-_get_token_and_update() {
-    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
-    ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"
-    if [ -n "${ACCESS_TOKEN}" ]; then
-        [ -n "${UPDATE}" ] && {
-            _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-            _update_config ACCESS_TOKEN_EXPIRY "$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))" "${CONFIG}"
-        }
-    else
-        _print_center "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
-        printf "%s\n" "${RESPONSE}" 1>&2
-        return 1
-    fi
-    return 0
-}
+UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}"
+{ . "${UTILS_FOLDER}"/common-utils.sh && . "${UTILS_FOLDER}"/drive-utils.sh; } || { printf "Error: Unable to source util files.\n" && exit 1; }
 
 [ "${1}" = create ] || [ "${1}" = refresh ] || _short_help
 
-{ [ "${2}" = update ] && UPDATE="true"; } || unset UPDATE
-
-UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}"
-{ . "${UTILS_FOLDER}"/common-utils.sh; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+[ "${2}" = update ] || _update_config() { :; }
 
 _check_debug
-
-_print_center "justify" "Starting script.." "-"
 
 CLIENT_ID=""
 CLIENT_SECRET=""
@@ -62,10 +40,10 @@ SCOPE="https://www.googleapis.com/auth/drive"
 REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
 TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-[ -f "${INFO_PATH}/google-drive-upload.configpath" ] && CONFIG="$(cat "${INFO_PATH}/google-drive-upload.configpath" || :)"
+INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
+[ -f "${CONFIG_INFO}" ] && . "${CONFIG_INFO}"
 CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
-# shellcheck source=/dev/null
 [ -f "${CONFIG}" ] && . "${CONFIG}"
 
 ! [ -t 2 ] && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
@@ -75,44 +53,77 @@ CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
 _print_center "justify" "Checking credentials.." "-"
 
-# Credentials
-until [ -n "${CLIENT_ID}" ]; do
-    [ -n "${client_id}" ] && for _ in 1 2 3; do _clear_line 1; done
-    printf "\n" && "${QUIET:-_print_center}" "normal" " Client ID " "-" && printf -- "-> "
+# Following https://developers.google.com/identity/protocols/oauth2#size
+CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
+CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
+AUTHORIZATION_CODE_REGEX='[0-9]/[0-9A-Za-z_-]+' # 256 bytes minus initial fixed 2 bytes
+
+until [ -n "${CLIENT_ID}" ] && [ -n "${CLIENT_ID_VALID}" ]; do
+    [ -n "${CLIENT_ID}" ] && {
+        if printf "%s\n" "${CLIENT_ID}" | grep -qE "${CLIENT_ID_REGEX}"; then
+            [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+            CLIENT_ID_VALID="true" && continue
+        else
+            { [ -n "${client_id}" ] && message="- Try again"; } || message="in config ( ${CONFIG} )"
+            "${QUIET:-_print_center}" "normal" " Invalid Client ID ${message} " "-" && unset CLIENT_ID client_id
+        fi
+    }
+    [ -z "${client_id}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ID " "-"
+    [ -n "${client_id}" ] && _clear_line 1
+    printf -- "-> "
     read -r CLIENT_ID && client_id=1
-done && [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+done
 
-until [ -n "${CLIENT_SECRET}" ]; do
-    [ -n "${client_secret}" ] && for _ in 1 2 3; do _clear_line 1; done
-    printf "\n" && "${QUIET:-_print_center}" "normal" " Client Secret " "-" && printf -- "-> "
+until [ -n "${CLIENT_SECRET}" ] && [ -n "${CLIENT_SECRET_VALID}" ]; do
+    [ -n "${CLIENT_SECRET}" ] && {
+        if printf "%s\n" "${CLIENT_SECRET}" | grep -qE "${CLIENT_SECRET_REGEX}"; then
+            [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+            CLIENT_SECRET_VALID="true" && continue
+        else
+            { [ -n "${client_secret}" ] && message="- Try again"; } || message="in config ( ${CONFIG} )"
+            "${QUIET:-_print_center}" "normal" " Invalid Client Secret ${message} " "-" && unset CLIENT_SECRET client_secret
+        fi
+    }
+    [ -z "${client_secret}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client Secret " "-"
+    [ -n "${client_secret}" ] && _clear_line 1
+    printf -- "-> "
     read -r CLIENT_SECRET && client_secret=1
-done && [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+done
 
-for _ in 1 2; do _clear_line 1; done
+_clear_line 1
 
 if [ "${1}" = create ]; then
-    "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
+    printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
     URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
     printf "\n%s\n" "${URL}"
-    until [ -n "${CODE}" ]; do
-        [ -n "${code}" ] && for _ in 1 2 3; do _clear_line 1; done
-        printf "\n" && "${QUIET:-_print_center}" "normal" "Enter the authorization code" "-" && printf -- "-> "
-        read -r CODE && code=1
+    until [ -n "${AUTHORIZATION_CODE}" ] && [ -n "${AUTHORIZATION_CODE_VALID}" ]; do
+        [ -n "${AUTHORIZATION_CODE}" ] && {
+            if printf "%s\n" "${AUTHORIZATION_CODE}" | grep -qE "${AUTHORIZATION_CODE_REGEX}"; then
+                AUTHORIZATION_CODE_VALID="true" && continue
+            else
+                "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
+            fi
+        }
+        { [ -z "${authorization_code}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
+        printf -- "-> "
+        read -r AUTHORIZATION_CODE && authorization_code=1
     done
-    RESPONSE="$(curl --compressed -s -X POST \
-        --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
+    RESPONSE="$(curl --compressed "${CURL_PROGRESS}" -X POST \
+        --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
+    _clear_line 1 1>&2
 
-    REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1)"
-    if _get_token_and_update "${RESPONSE}"; then
-        "${UPDATE:-:}" REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
+    REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1 || :)"
+    if _get_access_token_and_update "${RESPONSE}"; then
+        _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
         printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
+    else
+        return 1
     fi
 elif [ "${1}" = refresh ]; then
     if [ -n "${REFRESH_TOKEN}" ]; then
         "${QUIET:-_print_center}" "justify" "Required credentials set." "="
-        _get_token_and_update
-        _clear_line 1
+        { _get_access_token_and_update && _clear_line 1; } || return 1
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
     else
         "${QUIET:-_print_center}" "normal" "Refresh Token not set" ", use ${0##*/} create to generate one." "="

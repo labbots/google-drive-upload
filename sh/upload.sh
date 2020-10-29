@@ -341,47 +341,94 @@ _check_credentials() {
         printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
     }
 
-    until [ -n "${CLIENT_ID}" ]; do
-        [ -n "${client_id}" ] && for _ in 1 2 3; do _clear_line 1; done
-        printf "\n" && "${QUIET:-_print_center}" "normal" " Client ID " "-" && printf -- "-> "
+    # Following https://developers.google.com/identity/protocols/oauth2#size
+    CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
+    CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
+    REFRESH_TOKEN_REGEX='[0-9]//[0-9A-Za-z_-]+'     # 512 bytes
+    ACCESS_TOKEN_REGEX='ya29\.[0-9A-Za-z_-]+'       # 2048 bytes
+    AUTHORIZATION_CODE_REGEX='[0-9]/[0-9A-Za-z_-]+' # 256 bytes
+
+    until [ -n "${CLIENT_ID}" ] && [ -n "${CLIENT_ID_VALID}" ]; do
+        [ -n "${CLIENT_ID}" ] && {
+            if printf "%s\n" "${CLIENT_ID}" | grep -qE "${CLIENT_ID_REGEX}"; then
+                [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+                CLIENT_ID_VALID="true" && continue
+            else
+                { [ -n "${client_id}" ] && message="- Try again"; } || message="in config ( ${CONFIG} )"
+                "${QUIET:-_print_center}" "normal" " Invalid Client ID ${message} " "-" && unset CLIENT_ID client_id
+            fi
+        }
+        [ -z "${client_id}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ID " "-"
+        [ -n "${client_id}" ] && _clear_line 1
+        printf -- "-> "
         read -r CLIENT_ID && client_id=1
-    done && [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+    done
 
-    until [ -n "${CLIENT_SECRET}" ]; do
-        [ -n "${client_secret}" ] && for _ in 1 2 3; do _clear_line 1; done
-        printf "\n" && "${QUIET:-_print_center}" "normal" " Client Secret " "-" && printf -- "-> "
+    until [ -n "${CLIENT_SECRET}" ] && [ -n "${CLIENT_SECRET_VALID}" ]; do
+        [ -n "${CLIENT_SECRET}" ] && {
+            if printf "%s\n" "${CLIENT_SECRET}" | grep -qE "${CLIENT_SECRET_REGEX}"; then
+                [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+                CLIENT_SECRET_VALID="true" && continue
+            else
+                { [ -n "${client_secret}" ] && message="- Try again"; } || message="in config ( ${CONFIG} )"
+                "${QUIET:-_print_center}" "normal" " Invalid Client Secret ${message} " "-" && unset CLIENT_SECRET client_secret
+            fi
+        }
+        [ -z "${client_secret}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client Secret " "-"
+        [ -n "${client_secret}" ] && _clear_line 1
+        printf -- "-> "
         read -r CLIENT_SECRET && client_secret=1
-    done && [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+    done
 
-    # Method to obtain refresh_token.
-    # Requirements: client_id, client_secret and authorization code.
+    [ -n "${REFRESH_TOKEN}" ] && {
+        ! printf "%s\n" "${REFRESH_TOKEN}" | grep -qE "${REFRESH_TOKEN_REGEX}" &&
+            "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-" && unset REFRESH_TOKEN
+    }
+
     [ -z "${REFRESH_TOKEN}" ] && {
         printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
         printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
         read -r REFRESH_TOKEN
         if [ -n "${REFRESH_TOKEN}" ]; then
-            { printf "\n\n" && _get_access_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
+            "${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
+            if ! printf "%s\n" "${REFRESH_TOKEN}" | grep -qE "${REFRESH_TOKEN_REGEX}"; then
+                { _get_access_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || check_error=1
+            else
+                check_error=true
+            fi
+            [ -n "${check_error}" ] && "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-" && unset REFRESH_TOKEN
         else
-            for _ in 1 2; do _clear_line 1; done
-            "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
+            "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"
+        fi
+
+        [ -z "${REFRESH_TOKEN}" ] && {
+            printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
             URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
             printf "\n%s\n" "${URL}"
-            until [ -n "${CODE}" ]; do
-                [ -n "${code}" ] && for _ in 1 2 3; do _clear_line 1; done
-                printf "\n" && "${QUIET:-_print_center}" "normal" "Enter the authorization code" "-" && printf -- "-> "
-                read -r CODE && code=1
+            until [ -n "${AUTHORIZATION_CODE}" ] && [ -n "${AUTHORIZATION_CODE_VALID}" ]; do
+                [ -n "${AUTHORIZATION_CODE}" ] && {
+                    if printf "%s\n" "${AUTHORIZATION_CODE}" | grep -qE "${AUTHORIZATION_CODE_REGEX}"; then
+                        AUTHORIZATION_CODE_VALID="true" && continue
+                    else
+                        "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
+                    fi
+                }
+                { [ -z "${authorization_code}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
+                printf -- "-> "
+                read -r AUTHORIZATION_CODE && authorization_code=1
             done
-            RESPONSE="$(curl --compressed "${CURL_PROGRESS_EXTRA}" -X POST \
-                --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
+            RESPONSE="$(curl --compressed "${CURL_PROGRESS}" -X POST \
+                --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
             _clear_line 1 1>&2
 
             REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1 || :)"
             { _get_access_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
-        fi
+        }
+        printf "\n"
     }
 
-    [ -z "${ACCESS_TOKEN}" ] || [ "${ACCESS_TOKEN_EXPIRY:-0}" -lt "$(date +'%s')" ] && { _get_access_token_and_update || return 1; }
-    export INITIAL_ACCESS_TOKEN="${ACCESS_TOKEN}"
+    { [ -z "${ACCESS_TOKEN}" ] || ! printf "%s\n" "${ACCESS_TOKEN}" | grep -qE "${ACCESS_TOKEN_REGEX}" || [ "${ACCESS_TOKEN_EXPIRY:-0}" -lt "$(date +'%s')" ]; } &&
+        { _get_access_token_and_update || return 1; }
     printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
 
     # launch a background service to check access token and update it
