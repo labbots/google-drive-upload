@@ -50,6 +50,7 @@
   - [Updation](#updation)
 - [Usage](#usage)
   - [Generating Oauth Credentials](#generating-oauth-credentials)
+  - [Enable Drive API](#enable-drive-api)
   - [First Run](#first-run)
   - [Config file](#config)
   - [Upload](#upload)
@@ -295,20 +296,40 @@ There are two methods:
 
 ## Usage
 
-First, we need to obtain our Oauth credentials, here's how to do it:
+First, we need to obtain our oauth credentials, here's how to do it:
 
 ### Generating Oauth Credentials
 
-- Log into google developer console at [google console](https://console.developers.google.com/).
-- Create new Project or use existing project.
-- Creating new OAuth 2.0 Credentials:
-  - Select Application type "other".
-  - Provide name for the new credentials. ( anything )
-  - This would provide a new Client ID and Client Secret.
-  - Download your credentials.json by clicking on the download button.
-- Enable Google Drive API for the project under "Library".
+- Follow [Enable Drive API](#enable-drive-api) section.
+- Open [google console](https://console.developers.google.com/).
+- Click on "Credentials".
+- Click "Create credentials" and select oauth client id.
+- Select Application type "Desktop app" or "other".
+- Provide name for the new credentials. ( anything )
+- This would provide a new Client ID and Client Secret.
+- Download your credentials.json by clicking on the download button.
 
-Now, we have obtained our credentials, move to next section to use those credentials to setup:
+Now, we have obtained our credentials, move to the [First run](#first-run) section to use those credentials:
+
+### Enable Drive API
+
+- Log into google developer console at [google console](https://console.developers.google.com/).
+- Click select project at the right side of "Google Cloud Platform" of upper left of window.
+
+If you cannot see the project, please try to access to [https://console.cloud.google.com/cloud-resource-manager](https://console.cloud.google.com/cloud-resource-manager).
+
+You can also create new project at there. When you create a new project there, please click the left of "Google Cloud Platform". You can see it like 3 horizontal lines.
+
+By this, a side bar is opened. At there, select "API & Services" -> "Library". After this, follow the below steps:
+
+- Click "NEW PROJECT" and input the "Project Name".
+- Click "CREATE" and open the created project.
+- Click "Enable APIs and get credentials like keys".
+- Go to "Library"
+- Input "Drive API" in "Search for APIs & Services".
+- Click "Google Drive API" and click "ENABLE".
+
+[Go back to oauth credentials setup](#generating-oauth-credentials)
 
 ### First Run
 
