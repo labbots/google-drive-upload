@@ -393,7 +393,7 @@ _upload_file() {
 ###################################################
 _upload_file_main() {
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    file_upload_file_main="${2}"
+    file_upload_file_main="${2}" sleep_upload_file_main=0
     { [ "${1}" = parse ] && dirid_upload_file_main="$(_get_rootdir_id "${file_upload_file_main}")"; } || dirid_upload_file_main="${3}"
 
     retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
@@ -403,6 +403,7 @@ _upload_file_main() {
         else
             _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" && RETURN_STATUS=1 && break
         fi
+        sleep "$((sleep_upload_file_main += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
         RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue
     done
     printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&"${RETURN_STATUS}"

@@ -388,7 +388,7 @@ _upload_file() {
 ###################################################
 _upload_file_main() {
     [[ $# -lt 2 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare file="${2}" dirid
+    declare file="${2}" dirid _sleep
     { [[ ${1} = parse ]] && dirid="$(_get_rootdir_id "${file}")"; } || dirid="${3}"
 
     retry="${RETRY:-0}" && unset RETURN_STATUS
@@ -398,6 +398,7 @@ _upload_file_main() {
         else
             _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" && RETURN_STATUS=1 && break
         fi
+        sleep "$((_sleep += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
         RETURN_STATUS=2 retry="$((retry - 1))" && continue
     done
     { [[ ${RETURN_STATUS} = 1 ]] && printf "%b" "${4:+${RETURN_STATUS}\n}"; } || printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&2
