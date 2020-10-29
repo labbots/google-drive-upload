@@ -162,24 +162,6 @@ _display_time() {
 }
 
 ###################################################
-# Extract ID from a googledrive folder/file url.
-# Globals: None
-# Arguments: 1
-#   ${1} = googledrive folder/file url.
-# Result: print extracted ID
-###################################################
-_extract_id() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare LC_ALL=C ID="${1}"
-    case "${ID}" in
-        *'drive.google.com'*'id='*) ID="${ID##*id=}" && ID="${ID%%\?*}" && ID="${ID%%\&*}" ;;
-        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) ID="${ID##*\/d\/}" && ID="${ID%%\/*}" && ID="${ID%%\?*}" && ID="${ID%%\&*}" ;;
-        *'drive.google.com'*'drive'*'folders'*) ID="${ID##*\/folders\/}" && ID="${ID%%\?*}" && ID="${ID%%\&*}" ;;
-    esac
-    printf "%b" "${ID:+${ID}\n}"
-}
-
-###################################################
 # Fetch latest commit sha of release or branch
 # Do not use github rest api because rate limit error occurs
 # Globals: None

@@ -1,98 +1,137 @@
 #!/usr/bin/env sh
-# shellcheck source=/dev/null
 
 ###################################################
-# A simple wrapper to check tempfile for access token and make authorized oauth requests to drive api
+# Search for an existing file on gdrive with write permission.
+# Globals: 3 variables, 2 functions
+#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
+#   Functions - _url_encode, _json_value
+# Arguments: 2
+#   ${1} = file name
+#   ${2} = root dir id of file
+# Result: print file id else blank
+# Reference:
+#   https://developers.google.com/drive/api/v3/search-files
 ###################################################
-_api_request() {
-    . "${TMPFILE}_ACCESS_TOKEN"
+_check_existing_file() (
+    [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
+    name_check_existing_file="${1##*/}" rootdir_check_existing_file="${2}"
+    unset query_check_existing_file response_check_existing_file id_check_existing_file
 
-    curl --compressed \
-        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-        "${@}"
-}
+    "${EXTRA_LOG}" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
+    query_check_existing_file="$(_url_encode "name='${name_check_existing_file}' and '${rootdir_check_existing_file}' in parents and trashed=false and 'me' in writers")"
+
+    response_check_existing_file="$(_api_request "${CURL_PROGRESS_EXTRA}" \
+        "${API_URL}/drive/${API_VERSION}/files?q=${query_check_existing_file}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
+    _clear_line 1 1>&2
+
+    { printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2>| /dev/null 1>&2 && printf "%s\n" "${response_check_existing_file}"; } || return 1
+    return 0
+)
 
 ###################################################
-# Method to regenerate access_token ( also updates in config ).
-# Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
-# Globals: 9 variables, 2 functions
-#   Variables - CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, TOKEN_URL, CONFIG, API_URL, API_VERSION, QUIET, NO_UPDATE_TOKEN
-#   Functions - _update_config and _print_center
-# Result: Update access_token and expiry else print error
+# Copy/Clone a public gdrive file/folder from another/same gdrive account
+# Globals: 6 variables, 2 functions
+#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN
+#   Functions - _print_center, _check_existing_file, _json_value, _bytes_to_human, _clear_line
+# Arguments: 5
+#   ${1} = update or upload ( upload type )
+#   ${2} = file id to upload
+#   ${3} = root dir id for file
+#   ${4} = name of file
+#   ${5} = size of file
+# Result: On
+#   Success - Upload/Update file and export FILE_ID
+#   Error - return 1
+# Reference:
+#   https://developers.google.com/drive/api/v2/reference/files/copy
 ###################################################
-_get_access_token_and_update() {
-    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
-    if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
-        ACCESS_TOKEN_EXPIRY="$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))"
-        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+_clone_file() {
+    [ $# -lt 5 ] && printf "Missing arguments\n" && return 1
+    job_clone_file="${1}" file_id_clone_file="${2}" file_root_id_clone_file="${3}" name_clone_file="${4}" size_clone_file="${5}"
+    unset post_data_clone_file response_clone_file readable_size_clone_file && STRING="Cloned"
+    post_data_clone_file="{\"parents\": [\"${file_root_id_clone_file}\"]}"
+    readable_size_clone_file="$(printf "%s\n" "${size_clone_file}" | _bytes_to_human)"
+
+    _print_center "justify" "${name_clone_file} " "| ${readable_size_clone_file}" "="
+
+    if [ "${job_clone_file}" = update ]; then
+        unset file_check_json_clone_file
+        # Check if file actually exists.
+        if file_check_json_clone_file="$(_check_existing_file "${name_clone_file}" "${file_root_id_clone_file}")"; then
+            if [ -n "${SKIP_DUPLICATES}" ]; then
+                _collect_file_info "${file_check_json_clone_file}" "${name_clone_file}" || return 1
+                _clear_line 1
+                "${QUIET:-_print_center}" "justify" "${name_clone_file}" " already exists." "=" && return 0
+            else
+                _print_center "justify" "Overwriting file.." "-"
+                { _file_id_clone_file="$(printf "%s\n" "${file_check_json_clone_file}" | _json_value id 1 1)" &&
+                    post_data_clone_file="$(_drive_info "${_file_id_clone_file}" "parents,writersCanShare")"; } ||
+                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}"; }
+                if [ "${_file_id_clone_file}" != "${file_id_clone_file}" ]; then
+                    _api_request -s \
+                        -X DELETE \
+                        "${API_URL}/drive/${API_VERSION}/files/${_file_id_clone_file}?supportsAllDrives=true&includeItemsFromAllDrives=true" 2>| /dev/null 1>&2 || :
+                    STRING="Updated"
+                else
+                    _collect_file_info "${file_check_json_clone_file}" "${name_clone_file}" || return 1
+                fi
+            fi
+        else
+            _print_center "justify" "Cloning file.." "-"
+        fi
     else
-        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
-        printf "%s\n" "${RESPONSE}" 1>&2
-        return 1
+        _print_center "justify" "Cloning file.." "-"
     fi
+
+    # shellcheck disable=SC2086
+    response_clone_file="$(_api_request ${CURL_PROGRESS} \
+        -X POST \
+        -H "Content-Type: application/json; charset=UTF-8" \
+        -d "${post_data_clone_file}" \
+        "${API_URL}/drive/${API_VERSION}/files/${file_id_clone_file}/copy?supportsAllDrives=true&includeItemsFromAllDrives=true" || :)"
+    for _ in 1 2 3; do _clear_line 1; done
+    _collect_file_info "${response_clone_file}" "${name_clone_file}" || return 1
+    "${QUIET:-_print_center}" "justify" "${name_clone_file} " "| ${readable_size_clone_file} | ${STRING}" "="
     return 0
 }
 
 ###################################################
-# A small function to get rootdir id for files in sub folder uploads
-# Globals: 1 variable, 1 function
-#   Variables - DIRIDS
-#   Functions - _dirname
-# Arguments: 1
-#   ${1} = filename
-# Result: read discription
+# Create/Check directory in google drive.
+# Globals: 3 variables, 2 functions
+#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
+#   Functions - _url_encode, _json_value
+# Arguments: 2
+#   ${1} = dir name
+#   ${2} = root dir id of given dir
+# Result: print folder id
+# Reference:
+#   https://developers.google.com/drive/api/v3/folder
 ###################################################
-_get_rootdir_id() {
-    file_gen_final_list="${1:?Error: give filename}"
-    rootdir_gen_final_list="$(_dirname "${file_gen_final_list}")"
-    temp_gen_final_list="$(printf "%s\n" "${DIRIDS:?Error: DIRIDS Missing}" | grep -F "|:_//_:|${rootdir_gen_final_list}|:_//_:|" || :)"
-    printf "%s\n" "${temp_gen_final_list%%"|:_//_:|${rootdir_gen_final_list}|:_//_:|"}"
-    return 0
-}
+_create_directory() {
+    [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
+    dirname_create_directory="${1##*/}" rootdir_create_directory="${2}"
+    unset query_create_directory search_response_create_directory folder_id_create_directory
 
-###################################################
-# Used in collecting file properties from output json after a file has been uploaded/cloned
-# Also handles logging in log file if LOG_FILE_ID is set
-# Globals: 1 variables, 2 functions
-#   Variables - LOG_FILE_ID
-#   Functions - _error_logging_upload, _json_value
-# Arguments: 1
-#   ${1} = output jsom
-# Result: set fileid and link, save info to log file if required
-###################################################
-_collect_file_info() {
-    json_collect_file_info="${1}" info_collect_file_info=""
-    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}"; }
-    { [ -z "${LOG_FILE_ID}" ] || [ -d "${LOG_FILE_ID}" ]; } && return 0
-    info_collect_file_info="$(
-        printf "%s\n" "Link: https://drive.google.com/open?id=${FILE_ID}"
-        printf "%s\n" "Name: $(printf "%s\n" "${json_collect_file_info}" | _json_value name 1 1 || :)"
-        printf "%s\n" "ID: ${FILE_ID}"
-        printf "%s\n" "Type: $(printf "%s\n" "${json_collect_file_info}" | _json_value mimeType 1 1 || :)"
-    )"
-    printf "%s\n" "${info_collect_file_info}" >> "${LOG_FILE_ID}"
-    return 0
-}
+    "${EXTRA_LOG}" "justify" "Creating GDRIVE DIR:" " ${dirname_create_directory}" "-" 1>&2
+    query_create_directory="$(_url_encode "mimeType='application/vnd.google-apps.folder' and name='${dirname_create_directory}' and trashed=false and '${rootdir_create_directory}' in parents")"
 
-###################################################
-# Error logging wrapper
-###################################################
-_error_logging_upload() {
-    log_error_logging_upload="${2}"
-    "${QUIET:-_print_center}" "justify" "Upload ERROR" ", ${1:-} not ${STRING:-uploaded}." "=" 1>&2
-    case "${log_error_logging_upload}" in
-        # https://github.com/rclone/rclone/issues/3857#issuecomment-573413789
-        *'"message": "User rate limit exceeded."'*)
-            printf "%s\n\n%s\n" "${log_error_logging_upload}" \
-                "Today's upload limit reached for this account. Use another account to upload or wait for tomorrow." 1>&2
-            # Never retry if upload limit reached
-            export RETRY=0
-            ;;
-        '' | *) printf "%s\n" "${log_error_logging_upload}" 1>&2 ;;
-    esac
-    printf "\n\n\n" 1>&2
-    return 1
+    search_response_create_directory="$(_api_request "${CURL_PROGRESS_EXTRA}" \
+        "${API_URL}/drive/${API_VERSION}/files?q=${query_create_directory}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
+
+    if ! folder_id_create_directory="$(printf "%s\n" "${search_response_create_directory}" | _json_value id 1 1)"; then
+        unset create_folder_post_data_create_directory create_folder_response_create_directory
+        create_folder_post_data_create_directory="{\"mimeType\": \"application/vnd.google-apps.folder\",\"name\": \"${dirname_create_directory}\",\"parents\": [\"${rootdir_create_directory}\"]}"
+        create_folder_response_create_directory="$(_api_request "${CURL_PROGRESS_EXTRA}" \
+            -X POST \
+            -H "Content-Type: application/json; charset=UTF-8" \
+            -d "${create_folder_post_data_create_directory}" \
+            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
+    fi
+    _clear_line 1 1>&2
+
+    { folder_id_create_directory="${folder_id_create_directory:-$(printf "%s\n" "${create_folder_response_create_directory}" | _json_value id 1 1)}" && printf "%s\n" "${folder_id_create_directory}"; } ||
+        { printf "%s\n" "${create_folder_response_create_directory}" 1>&2 && return 1; }
+    return 0
 }
 
 ###################################################
@@ -124,145 +163,44 @@ _drive_info() {
 }
 
 ###################################################
-# Search for an existing file on gdrive with write permission.
-# Globals: 3 variables, 2 functions
-#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
-#   Functions - _url_encode, _json_value
-# Arguments: 2
-#   ${1} = file name
-#   ${2} = root dir id of file
-# Result: print file id else blank
-# Reference:
-#   https://developers.google.com/drive/api/v3/search-files
+# Extract ID from a googledrive folder/file url.
+# Globals: None
+# Arguments: 1
+#   ${1} = googledrive folder/file url.
+# Result: print extracted ID
 ###################################################
-_check_existing_file() (
-    [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    name_check_existing_file="${1##*/}" rootdir_check_existing_file="${2}"
-    unset query_check_existing_file response_check_existing_file id_check_existing_file
-
-    "${EXTRA_LOG}" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
-    query_check_existing_file="$(_url_encode "name='${name_check_existing_file}' and '${rootdir_check_existing_file}' in parents and trashed=false and 'me' in writers")"
-
-    response_check_existing_file="$(_api_request "${CURL_PROGRESS_EXTRA}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query_check_existing_file}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
-    _clear_line 1 1>&2
-
-    { printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2>| /dev/null 1>&2 && printf "%s\n" "${response_check_existing_file}"; } || return 1
-    return 0
-)
-
-###################################################
-# Create/Check directory in google drive.
-# Globals: 3 variables, 2 functions
-#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
-#   Functions - _url_encode, _json_value
-# Arguments: 2
-#   ${1} = dir name
-#   ${2} = root dir id of given dir
-# Result: print folder id
-# Reference:
-#   https://developers.google.com/drive/api/v3/folder
-###################################################
-_create_directory() (
-    [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    dirname_create_directory="${1##*/}" rootdir_create_directory="${2}"
-    unset query_create_directory search_response_create_directory folder_id_create_directory
-
-    "${EXTRA_LOG}" "justify" "Creating GDRIVE DIR:" " ${dirname_create_directory}" "-" 1>&2
-    query_create_directory="$(_url_encode "mimeType='application/vnd.google-apps.folder' and name='${dirname_create_directory}' and trashed=false and '${rootdir_create_directory}' in parents")"
-
-    search_response_create_directory="$(_api_request "${CURL_PROGRESS_EXTRA}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query_create_directory}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
-
-    if ! folder_id_create_directory="$(printf "%s\n" "${search_response_create_directory}" | _json_value id 1 1)"; then
-        unset create_folder_post_data_create_directory create_folder_response_create_directory
-        create_folder_post_data_create_directory="{\"mimeType\": \"application/vnd.google-apps.folder\",\"name\": \"${dirname_create_directory}\",\"parents\": [\"${rootdir_create_directory}\"]}"
-        create_folder_response_create_directory="$(_api_request "${CURL_PROGRESS_EXTRA}" \
-            -X POST \
-            -H "Content-Type: application/json; charset=UTF-8" \
-            -d "${create_folder_post_data_create_directory}" \
-            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
-    fi
-    _clear_line 1 1>&2
-
-    { folder_id_create_directory="${folder_id_create_directory:-$(printf "%s\n" "${create_folder_response_create_directory}" | _json_value id 1 1)}" && printf "%s\n" "${folder_id_create_directory}"; } ||
-        { printf "%s\n" "${create_folder_response_create_directory}" 1>&2 && return 1; }
-    return 0
-)
-
-###################################################
-# Sub functions for _upload_file function - Start
-# generate resumable upload link
-_generate_upload_link() {
-    "${EXTRA_LOG}" "justify" "Generating upload link.." "-" 1>&2
-    uploadlink_upload_file="$(_api_request "${CURL_PROGRESS_EXTRA}" \
-        -X "${request_method_upload_file}" \
-        -H "Content-Type: application/json; charset=UTF-8" \
-        -H "X-Upload-Content-Type: ${mime_type_upload_file}" \
-        -H "X-Upload-Content-Length: ${inputsize_upload_file}" \
-        -d "$postdata_upload_file" \
-        "${url_upload_file}" \
-        -D - || :)" && _clear_line 1 1>&2
-    _clear_line 1 1>&2
-
-    case "${uploadlink_upload_file}" in
-        *'ocation: '*'upload_id'*) uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)" && return 0 ;;
-        '' | *) return 1 ;;
+_extract_id() {
+    [ $# = 0 ] && printf "Missing arguments\n" && return 1
+    LC_ALL=C id_extract_id="${1}"
+    case "${id_extract_id}" in
+        *'drive.google.com'*'id='*) _tmp="${id_extract_id##*id=}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
+        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) _tmp="${id_extract_id##*\/d\/}" && _tmp="${_tmp%%\/*}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
+        *'drive.google.com'*'drive'*'folders'*) _tmp="${id_extract_id##*\/folders\/}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
     esac
-
-    return 0
+    printf "%b" "${id_extract_id:+${id_extract_id}\n}"
 }
 
-# Curl command to push the file to google drive.
-_upload_file_from_uri() {
-    _print_center "justify" "Uploading.." "-"
-    # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_PROGRESS} won't be anything problematic.
-    upload_body_upload_file="$(_api_request ${CURL_PROGRESS} \
-        -X PUT \
-        -H "Content-Type: ${mime_type_upload_file}" \
-        -H "Content-Length: ${content_length_upload_file}" \
-        -H "Slug: ${slug_upload_file}" \
-        -T "${input_upload_file}" \
-        -o- \
-        --url "${uploadlink_upload_file}" \
-        --globoff \
-        ${CURL_SPEED} ${resume_args1} ${resume_args2} \
-        -H "${resume_args3}" || :)"
-    [ -z "${VERBOSE_PROGRESS}" ] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
-    return 0
-}
-
-# logging in case of successful upload
-_normal_logging_upload() {
-    [ -z "${VERBOSE_PROGRESS}" ] && _clear_line 1
-    "${QUIET:-_print_center}" "justify" "${slug_upload_file} " "| ${readable_size_upload_file} | ${STRING}" "="
-    return 0
-}
-
-# Tempfile Used for resuming interrupted uploads
-_log_upload_session() {
-    [ "${inputsize_upload_file}" -gt 1000000 ] && printf "%s\n" "${uploadlink_upload_file}" >| "${__file_upload_file}"
-    return 0
-}
-
-# remove upload session
-_remove_upload_session() {
-    rm -f "${__file_upload_file}"
-    return 0
-}
-
-# wrapper to fully upload a file from scratch
-_full_upload() {
-    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}"; }
-    _log_upload_session
-    _upload_file_from_uri
-    _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1
-    _normal_logging_upload
-    _remove_upload_session
-    return 0
-}
-# Sub functions for _upload_file function - End
 ###################################################
+# Method to regenerate access_token ( also updates in config ).
+# Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
+# Globals: 9 variables, 2 functions
+#   Variables - CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, TOKEN_URL, CONFIG, API_URL, API_VERSION, QUIET, NO_UPDATE_TOKEN
+#   Functions - _update_config and _print_center
+# Result: Update access_token and expiry else print error
+###################################################
+_get_access_token_and_update() {
+    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
+    if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
+        ACCESS_TOKEN_EXPIRY="$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))"
+        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
+        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+    else
+        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
+        printf "%s\n" "${RESPONSE}" 1>&2
+        return 1
+    fi
+    return 0
+}
 
 ###################################################
 # Upload ( Create/Update ) files on gdrive.
@@ -380,165 +318,78 @@ _upload_file() {
 }
 
 ###################################################
-# A extra wrapper for _upload_file function to properly handle retries
-# also handle uploads in case uploading from folder
-# Globals: 3 variables, 1 function
-#   Variables - RETRY, UPLOAD_MODE and ACCESS_TOKEN
-#   Functions - _upload_file
-# Arguments: 3
-#   ${1} = parse or norparse
-#   ${2} = file path
-#   ${3} = if ${1} != parse; gdrive folder id to upload; fi
-# Result: set SUCCESS var on success
-###################################################
-_upload_file_main() {
-    [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    file_upload_file_main="${2}" sleep_upload_file_main=0
-    { [ "${1}" = parse ] && dirid_upload_file_main="$(_get_rootdir_id "${file_upload_file_main}")"; } || dirid_upload_file_main="${3}"
-
-    retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
-    until [ "${retry_upload_file_main}" -le 0 ] && [ -n "${RETURN_STATUS}" ]; do
-        if [ -n "${4}" ]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
-        else
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" && RETURN_STATUS=1 && break
-        fi
-        sleep "$((sleep_upload_file_main += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
-        RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue
-    done
-    printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&"${RETURN_STATUS}"
-    return 0
-}
-
-###################################################
-# Upload all files in the given folder, parallelly or non-parallely and show progress
-# Globals: 7 variables, 3 functions
-#   Variables - VERBOSE, VERBOSE_PROGRESS, NO_OF_PARALLEL_JOBS, NO_OF_FILES, TMPFILE, UTILS_FOLDER and QUIET
-#   Functions - _clear_line, _newline, _print_center and _upload_file_main
-# Arguments: 4
-#   ${1} = parallel or normal
-#   ${2} = parse or norparse
-#   ${3} = filenames with full path
-#   ${4} = if ${2} != parse; then gdrive folder id to upload; fi
-# Result: read discription, set SUCCESS_STATUS & ERROR_STATUS
-###################################################
-_upload_folder() {
-    [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
-    mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
-    case "${mode_upload_folder}" in
-        normal)
-            [ "${PARSE_MODE}" = parse ] && _clear_line 1 && _newline "\n"
-
-            while read -r file <&4; do
-                _upload_file_main "${PARSE_MODE}" "${file}" "${ID}"
-                : "$((RETURN_STATUS < 2 ? (SUCCESS_STATUS += 1) : (ERROR_STATUS += 1)))"
-                if [ -n "${VERBOSE:-${VERBOSE_PROGRESS}}" ]; then
-                    _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && _newline "\n"
-                else
-                    for _ in 1 2; do _clear_line 1; done
-                    _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "="
-                fi
-            done 4<< EOF
-$(printf "%s\n" "${files_upload_folder}")
-EOF
-            ;;
-        parallel)
-            NO_OF_PARALLEL_JOBS_FINAL="$((NO_OF_PARALLEL_JOBS > NO_OF_FILES ? NO_OF_FILES : NO_OF_PARALLEL_JOBS))"
-            [ -f "${TMPFILE}"SUCCESS ] && rm "${TMPFILE}"SUCCESS
-            [ -f "${TMPFILE}"ERROR ] && rm "${TMPFILE}"ERROR
-
-            # shellcheck disable=SC2016
-            (printf "%s\n" "${files_upload_folder}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} sh -c '
-            eval "${SOURCE_UTILS}"
-            _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
-            ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR) &
-            pid="${!}"
-
-            until [ -f "${TMPFILE}"SUCCESS ] || [ -f "${TMPFILE}"ERORR ]; do sleep 0.5; done
-            [ "${PARSE_MODE}" = parse ] && _clear_line 1
-            _newline "\n"
-
-            until ! kill -0 "${pid}" 2>| /dev/null 1>&2; do
-                SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))"
-                ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))"
-                sleep 1
-                [ "$((SUCCESS_STATUS + ERROR_STATUS))" != "${TOTAL}" ] &&
-                    _clear_line 1 && "${QUIET:-_print_center}" "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
-                TOTAL="$((SUCCESS_STATUS + ERROR_STATUS))"
-            done
-            SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))"
-            ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))"
-            ;;
-    esac
-    return 0
-}
-
-###################################################
-# Copy/Clone a public gdrive file/folder from another/same gdrive account
-# Globals: 6 variables, 2 functions
-#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN
-#   Functions - _print_center, _check_existing_file, _json_value, _bytes_to_human, _clear_line
-# Arguments: 5
-#   ${1} = update or upload ( upload type )
-#   ${2} = file id to upload
-#   ${3} = root dir id for file
-#   ${4} = name of file
-#   ${5} = size of file
-# Result: On
-#   Success - Upload/Update file and export FILE_ID
-#   Error - return 1
-# Reference:
-#   https://developers.google.com/drive/api/v2/reference/files/copy
-###################################################
-_clone_file() {
-    [ $# -lt 5 ] && printf "Missing arguments\n" && return 1
-    job_clone_file="${1}" file_id_clone_file="${2}" file_root_id_clone_file="${3}" name_clone_file="${4}" size_clone_file="${5}"
-    unset post_data_clone_file response_clone_file readable_size_clone_file && STRING="Cloned"
-    post_data_clone_file="{\"parents\": [\"${file_root_id_clone_file}\"]}"
-    readable_size_clone_file="$(printf "%s\n" "${size_clone_file}" | _bytes_to_human)"
-
-    _print_center "justify" "${name_clone_file} " "| ${readable_size_clone_file}" "="
-
-    if [ "${job_clone_file}" = update ]; then
-        unset file_check_json_clone_file
-        # Check if file actually exists.
-        if file_check_json_clone_file="$(_check_existing_file "${name_clone_file}" "${file_root_id_clone_file}")"; then
-            if [ -n "${SKIP_DUPLICATES}" ]; then
-                _collect_file_info "${file_check_json_clone_file}" "${name_clone_file}" || return 1
-                _clear_line 1
-                "${QUIET:-_print_center}" "justify" "${name_clone_file}" " already exists." "=" && return 0
-            else
-                _print_center "justify" "Overwriting file.." "-"
-                { _file_id_clone_file="$(printf "%s\n" "${file_check_json_clone_file}" | _json_value id 1 1)" &&
-                    post_data_clone_file="$(_drive_info "${_file_id_clone_file}" "parents,writersCanShare")"; } ||
-                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}"; }
-                if [ "${_file_id_clone_file}" != "${file_id_clone_file}" ]; then
-                    _api_request -s \
-                        -X DELETE \
-                        "${API_URL}/drive/${API_VERSION}/files/${_file_id_clone_file}?supportsAllDrives=true&includeItemsFromAllDrives=true" 2>| /dev/null 1>&2 || :
-                    STRING="Updated"
-                else
-                    _collect_file_info "${file_check_json_clone_file}" "${name_clone_file}" || return 1
-                fi
-            fi
-        else
-            _print_center "justify" "Cloning file.." "-"
-        fi
-    else
-        _print_center "justify" "Cloning file.." "-"
-    fi
-
-    # shellcheck disable=SC2086
-    response_clone_file="$(_api_request ${CURL_PROGRESS} \
-        -X POST \
+# Sub functions for _upload_file function - Start
+# generate resumable upload link
+_generate_upload_link() {
+    "${EXTRA_LOG}" "justify" "Generating upload link.." "-" 1>&2
+    uploadlink_upload_file="$(_api_request "${CURL_PROGRESS_EXTRA}" \
+        -X "${request_method_upload_file}" \
         -H "Content-Type: application/json; charset=UTF-8" \
-        -d "${post_data_clone_file}" \
-        "${API_URL}/drive/${API_VERSION}/files/${file_id_clone_file}/copy?supportsAllDrives=true&includeItemsFromAllDrives=true" || :)"
-    for _ in 1 2 3; do _clear_line 1; done
-    _collect_file_info "${response_clone_file}" "${name_clone_file}" || return 1
-    "${QUIET:-_print_center}" "justify" "${name_clone_file} " "| ${readable_size_clone_file} | ${STRING}" "="
+        -H "X-Upload-Content-Type: ${mime_type_upload_file}" \
+        -H "X-Upload-Content-Length: ${inputsize_upload_file}" \
+        -d "$postdata_upload_file" \
+        "${url_upload_file}" \
+        -D - || :)" && _clear_line 1 1>&2
+    _clear_line 1 1>&2
+
+    case "${uploadlink_upload_file}" in
+        *'ocation: '*'upload_id'*) uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)" && return 0 ;;
+        '' | *) return 1 ;;
+    esac
+
     return 0
 }
+
+# Curl command to push the file to google drive.
+_upload_file_from_uri() {
+    _print_center "justify" "Uploading.." "-"
+    # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_PROGRESS} won't be anything problematic.
+    upload_body_upload_file="$(_api_request ${CURL_PROGRESS} \
+        -X PUT \
+        -H "Content-Type: ${mime_type_upload_file}" \
+        -H "Content-Length: ${content_length_upload_file}" \
+        -H "Slug: ${slug_upload_file}" \
+        -T "${input_upload_file}" \
+        -o- \
+        --url "${uploadlink_upload_file}" \
+        --globoff \
+        ${CURL_SPEED} ${resume_args1} ${resume_args2} \
+        -H "${resume_args3}" || :)"
+    [ -z "${VERBOSE_PROGRESS}" ] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
+    return 0
+}
+
+# logging in case of successful upload
+_normal_logging_upload() {
+    [ -z "${VERBOSE_PROGRESS}" ] && _clear_line 1
+    "${QUIET:-_print_center}" "justify" "${slug_upload_file} " "| ${readable_size_upload_file} | ${STRING}" "="
+    return 0
+}
+
+# Tempfile Used for resuming interrupted uploads
+_log_upload_session() {
+    [ "${inputsize_upload_file}" -gt 1000000 ] && printf "%s\n" "${uploadlink_upload_file}" >| "${__file_upload_file}"
+    return 0
+}
+
+# remove upload session
+_remove_upload_session() {
+    rm -f "${__file_upload_file}"
+    return 0
+}
+
+# wrapper to fully upload a file from scratch
+_full_upload() {
+    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}"; }
+    _log_upload_session
+    _upload_file_from_uri
+    _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1
+    _normal_logging_upload
+    _remove_upload_session
+    return 0
+}
+# Sub functions for _upload_file function - End
+###################################################
 
 ###################################################
 # Share a gdrive file/folder

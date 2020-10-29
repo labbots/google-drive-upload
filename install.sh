@@ -165,22 +165,6 @@ _detect_profile() {
 }
 
 ###################################################
-# Alternative to dirname command
-# Globals: None
-# Arguments: 1
-#   ${1} = path of file or folder
-# Result: read description
-# Reference:
-#   https://github.com/dylanaraps/pure-sh-bible#file-paths
-###################################################
-_dirname() {
-    dir_dirname="${1:-.}"
-    dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}" && [ "${dir_dirname##*/*}" ] && dir_dirname=.
-    dir_dirname="${dir_dirname%/*}" && dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}"
-    printf '%s\n' "${dir_dirname:-/}"
-}
-
-###################################################
 # print column size
 # use bash or zsh or stty or tput
 ###################################################

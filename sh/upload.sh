@@ -719,7 +719,7 @@ main() {
     [ $# = 0 ] && _short_help
 
     if [ -z "${SELF_SOURCE}" ]; then
-        UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}" && SOURCE_UTILS=". '${UTILS_FOLDER}/common-utils.sh' && . '${UTILS_FOLDER}/drive-utils.sh'"
+        UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}" && SOURCE_UTILS=". '${UTILS_FOLDER}/common-utils.sh' && . '${UTILS_FOLDER}/drive-utils.sh' && . '${UTILS_FOLDER}/upload-utils.sh'"
         eval "${SOURCE_UTILS}" || { printf "Error: Unable to source util files.\n" && exit 1; }
     else
         SOURCE_UTILS="SOURCED_GUPLOAD=true . \"$(cd "$(_dirname "${0}")" && pwd)/${0##*\/}\"" && eval "${SOURCE_UTILS}"

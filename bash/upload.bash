@@ -696,7 +696,8 @@ main() {
 
     [[ -z ${SELF_SOURCE} ]] && {
         UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
-        { . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+        { . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash && . "${UTILS_FOLDER}"/upload-utils.bash; } ||
+            { printf "Error: Unable to source util files.\n" && exit 1; }
     }
 
     _check_bash_version && set -o errexit -o noclobber -o pipefail

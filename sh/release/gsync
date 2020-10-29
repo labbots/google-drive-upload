@@ -130,24 +130,6 @@ _display_time() {
 }
 
 ###################################################
-# Extract ID from a googledrive folder/file url.
-# Globals: None
-# Arguments: 1
-#   ${1} = googledrive folder/file url.
-# Result: print extracted ID
-###################################################
-_extract_id() {
-    [ $# = 0 ] && printf "Missing arguments\n" && return 1
-    LC_ALL=C id_extract_id="${1}"
-    case "${id_extract_id}" in
-        *'drive.google.com'*'id='*) _tmp="${id_extract_id##*id=}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
-        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) _tmp="${id_extract_id##*\/d\/}" && _tmp="${_tmp%%\/*}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
-        *'drive.google.com'*'drive'*'folders'*) _tmp="${id_extract_id##*\/folders\/}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
-    esac
-    printf "%b" "${id_extract_id:+${id_extract_id}\n}"
-}
-
-###################################################
 # print column size
 # use zsh or stty or tput
 ###################################################
