@@ -366,6 +366,6 @@ _url_encode() {
                 printf '%%%02X' "'${_}"
                 ;;
         esac
-    done
+    done 2>| /dev/null
     printf '\n'
 }
