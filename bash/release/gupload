@@ -1062,6 +1062,35 @@ _version_info() {
 }
 
 ###################################################
+# Function to cleanup config file
+# Remove invalid access tokens on the basis of corresponding expiry
+# Globals: None
+# Arguments: 1
+#   ${1} = config file
+# Result: read description
+###################################################
+_cleanup_config() {
+    declare config="${1:?Error: Missing config}" values_regex
+
+    ! [ -f "${config}" ] && return 0
+
+    while read -r line; do
+        expiry_value_name="${line%%=*}"
+        token_value_name="${expiry_value_name%%_EXPIRY}"
+
+        : "${line##*=}" && : "${_%\"}" && expiry="${_#\"}"
+        [[ ${expiry} -le "$(printf "%(%s)T\\n" "-1")" ]] &&
+            values_regex="${values_regex:+${values_regex}|}${expiry_value_name}=\".*\"|${token_value_name}=\".*\""
+
+    done <<< "$(grep -F ACCESS_TOKEN_EXPIRY "${config}" || :)"
+
+    chmod +w "${config}" &&
+        printf "%s\n" "$(grep -Ev "^\$${values_regex:+|${values_regex}}" "${config}")" >| "${config}" &&
+        chmod -w "${config}"
+    return 0
+}
+
+###################################################
 # Process all arguments given to the script
 # Globals: 2 variable, 1 function
 #   Variable - HOME, CONFIG
@@ -1672,7 +1701,7 @@ main() {
                 printf "\n\n%s\n" "Script exited manually."
                 kill -- -$$ &
             else
-                _auto_update &
+                { _cleanup_config "${CONFIG}" && _auto_update; } &
             fi
         } 2>| /dev/null 1>&2 || :
         return 0
