@@ -734,10 +734,9 @@ main() {
     { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/.$(_t="$(printf "%(%s)T\\n" "-1")" && printf "%s\n" "$((_t * _t))").LOG"
 
     _cleanup() {
+        # unhide the cursor if hidden
+        [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25h"
         {
-            # unhide the cursor if hidden
-            [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25h"
-
             [[ -f ${TMPFILE}_ACCESS_TOKEN ]] && {
                 # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
                 . "${TMPFILE}_ACCESS_TOKEN"
@@ -745,7 +744,7 @@ main() {
                     _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
                     _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
                 }
-            }
+            } 1>| /dev/null
 
             # grab all chidren processes of access token service
             # https://askubuntu.com/a/512872
@@ -753,14 +752,14 @@ main() {
                 token_service_pids="$(ps --ppid="${ACCESS_TOKEN_SERVICE_PID}" -o pid=)"
                 # first kill parent id, then children processes
                 kill "${ACCESS_TOKEN_SERVICE_PID}"
-            }
+            } 1>| /dev/null
 
             # grab all script children pids
             script_children_pids="$(ps --ppid="${MAIN_PID}" -o pid=)"
 
             # kill all grabbed children processes
             # shellcheck disable=SC2086
-            kill ${token_service_pids} ${script_children_pids}
+            kill ${token_service_pids} ${script_children_pids} 1>| /dev/null
 
             rm -f "${TMPFILE:?}"*
 
@@ -768,9 +767,9 @@ main() {
                 printf "\n\n%s\n" "Script exited manually."
                 kill -- -$$ &
             else
-                { _cleanup_config "${CONFIG}" && _auto_update; } &
+                { _cleanup_config "${CONFIG}" && _auto_update; } 1>| /dev/null &
             fi
-        } 2>| /dev/null 1>&2 || :
+        } 2>| /dev/null || :
         return 0
     }
 
