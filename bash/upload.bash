@@ -735,7 +735,7 @@ main() {
 
     _cleanup() {
         # unhide the cursor if hidden
-        [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25h"
+        [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\e[?25h"
         {
             [[ -f ${TMPFILE}_ACCESS_TOKEN ]] && {
                 # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
@@ -798,7 +798,7 @@ main() {
     _print_center "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
 
     # hide the cursor if ansi escapes are supported
-    [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25l"
+    [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\e[?25l"
 
     _process_arguments
 
