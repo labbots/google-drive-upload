@@ -709,6 +709,8 @@ main() {
         fi
     }
 
+    trap '' TSTP # ignore ctrl + z
+
     if [ -n "${UNINSTALL}" ]; then
         { _check_existing_command && _uninstall; } ||
             { "${QUIET:-_print_center}" "justify" "google-drive-upload is not installed." "="; }

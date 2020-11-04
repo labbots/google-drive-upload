@@ -1004,6 +1004,8 @@ main() {
         eval "${SOURCE_UTILS}" || { printf "Error: Unable to source util files.\n" && exit 1; }
     fi
 
+    trap '' TSTP # ignore ctrl + z
+
     _setup_arguments "${@}"
     _check_debug
     _config_variables

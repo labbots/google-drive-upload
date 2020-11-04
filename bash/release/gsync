@@ -984,6 +984,8 @@ main() {
         { . "${UTILS_FOLDER}"/common-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
     }
 
+    trap '' TSTP # ignore ctrl + z
+
     _setup_arguments "${@}"
     _check_debug
     _config_variables

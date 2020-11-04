@@ -801,6 +801,7 @@ main() {
 
     trap 'abnormal_exit="1" ; exit' INT TERM
     trap '_cleanup' EXIT
+    trap '' TSTP # ignore ctrl + z
 
     export MAIN_PID="$$"
 
