@@ -32,9 +32,9 @@ Options:\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
   --skip-internet-check - Do not check for internet connection, recommended to use in sync jobs.\n
-  -u | --update - Update the installed script in your system.\n
+  $([ "${GUPLOAD_INSTALLED_WITH}" = script ] && printf '%s\n' '\n  -u | --update - Update the installed script in your system.\n
+  -U | --uninstall - Uninstall script, remove related files.\n')
   --info - Show detailed info, only if script is installed system wide.\n
-  -U | --uninstall - Uninstall script, remove related files.\n
   -D | --debug - Display script command trace.\n
   -h | --help - Display this message.\n"
     exit 0
@@ -43,71 +43,6 @@ Options:\n
 _short_help() {
     printf "No valid arguments provided, use -h/--help flag to see usage.\n"
     exit 0
-}
-
-###################################################
-# Automatic updater, only update if script is installed system wide.
-# Globals: 5 variables, 2 functions
-#   COMMAND_NAME, REPO, INSTALL_PATH, TYPE, TYPE_VALUE | _update, _update_value
-# Arguments: None
-# Result: On
-#   Update if AUTO_UPDATE_INTERVAL + LAST_UPDATE_TIME less than printf "%(%s)T\\n" "-1"
-###################################################
-_auto_update() {
-    export REPO
-    command -v "${COMMAND_NAME}" 1> /dev/null &&
-        if [ -n "${REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+${TYPE_VALUE}}}}}" ]; then
-            current_time="$(date +'%s')"
-            [ "$((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL))" -lt "$(date +'%s')" ] && _update
-            _update_value LAST_UPDATE_TIME "${current_time}"
-        fi
-    return 0
-}
-
-###################################################
-# Install/Update/uninstall the script.
-# Globals: 4 variables
-#   Varibles - HOME, REPO, TYPE_VALUE, GLOBAL_INSTALL
-# Arguments: 1
-#   ${1} = uninstall or update
-# Result: On
-#   ${1} = nothing - Update the script if installed, otherwise install.
-#   ${1} = uninstall - uninstall the script
-###################################################
-_update() {
-    job_update="${1:-update}"
-    [ "${GLOBAL_INSTALL}" = true ] && ! [ "$(id -u)" = 0 ] && printf "%s\n" "Error: Need root access to update." && return 0
-    [ "${job_update}" = uninstall ] && job_uninstall="--uninstall"
-    _print_center "justify" "Fetching ${job_update} script.." "-"
-    repo_update="${REPO:-labbots/google-drive-upload}" type_value_update="${TYPE_VALUE:-latest}" cmd_update="${COMMAND_NAME:-gupload}" path_update="${INSTALL_PATH:-${HOME}/.google-drive-upload/bin}"
-    { [ "${TYPE:-}" != branch ] && type_value_update="$(_get_latest_sha release "${type_value_update}" "${repo_update}")"; } || :
-    if script_update="$(curl --compressed -Ls "https://github.com/${repo_update}/raw/${type_value_update}/install.sh")"; then
-        _clear_line 1
-        printf "%s\n" "${script_update}" | sh -s -- ${job_uninstall:-} --skip-internet-check --cmd "${cmd_update}" --path "${path_update}"
-        current_time="$(date +'%s')"
-        [ -z "${job_uninstall}" ] && _update_value LAST_UPDATE_TIME "${current_time}"
-    else
-        _clear_line 1
-        "${QUIET:-_print_center}" "justify" "Error: Cannot download" " ${job_update} script." "=" 1>&2
-        return 1
-    fi
-    return 0
-}
-
-###################################################
-# Update in-script values
-###################################################
-_update_value() {
-    command_path="${INSTALL_PATH:?}/${COMMAND_NAME}"
-    value_name="${1:-}" value="${2:-}"
-    script_without_value_and_shebang="$(grep -v "${value_name}=\".*\".* # added values" "${command_path}" | sed 1d)"
-    new_script="$(
-        sed -n 1p "${command_path}"
-        printf "%s\n" "${value_name}=\"${value}\" # added values"
-        printf "%s\n" "${script_without_value_and_shebang}"
-    )"
-    chmod +w "${command_path}" && printf "%s\n" "${new_script}" >| "${command_path}" && chmod -w "${command_path}"
-    return 0
 }
 
 ###################################################
@@ -211,8 +146,6 @@ _setup_arguments() {
         case "${1}" in
             -h | --help) _usage ;;
             -D | --debug) DEBUG="true" && export DEBUG ;;
-            -u | --update) _check_debug && _update && exit "${?}" ;;
-            --uninstall) _check_debug && _update uninstall && exit "${?}" ;;
             --info) _version_info ;;
             -c | -C | --create-dir)
                 _check_longoptions "${1}" "${2}"
@@ -304,6 +237,12 @@ _setup_arguments() {
             '') shorthelp ;;
             *) # Check if user meant it to be a flag
                 if [ -z "${1##-*}" ]; then
+                    [ "${GUPLOAD_INSTALLED_WITH}" = script ] && {
+                        case "${1}" in
+                            -u | --update) _check_debug && _update && exit "${?}" ;;
+                            --uninstall) _check_debug && _update uninstall && exit "${?}" ;;
+                        esac
+                    }
                     printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
                 else
                     case "${1}" in
@@ -793,7 +732,7 @@ main() {
                 printf "\n\n%s\n" "Script exited manually."
                 kill -9 -$$ &
             else
-                { _cleanup_config "${CONFIG}" && _auto_update; } 1>| /dev/null &
+                { _cleanup_config "${CONFIG}" && [ "${GUPLOAD_INSTALLED_WITH}" = script ] && _auto_update; } 1>| /dev/null &
             fi
         } 2>| /dev/null || :
         return 0

@@ -361,15 +361,88 @@ _variables() {
         date +'%s'
     fi)" && export LAST_UPDATE_TIME
     GLOBAL_INSTALL="false"
+    export GUPLOAD_INSTALLED_WITH="script"
 
     [ -n "${SKIP_SYNC}" ] && SYNC_COMMAND_NAME=""
-    export VALUES_LIST="REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL"
+    export VALUES_LIST="REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL GUPLOAD_INSTALLED_WITH"
 
-    VALUES_REGEX="" && for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL; do
+    VALUES_REGEX="" && for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL GUPLOAD_INSTALLED_WITH; do
         VALUES_REGEX="${VALUES_REGEX:+${VALUES_REGEX}|}^${i}=\".*\".* # added values"
     done
 
     return 0
+}
+
+###################################################
+# For self and automatic updates
+###################################################
+_print_self_update_code() {
+    cat << 'EOF'
+###################################################
+# Automatic updater, only update if script is installed system wide.
+# Globals: 5 variables, 2 functions
+#   COMMAND_NAME, REPO, INSTALL_PATH, TYPE, TYPE_VALUE | _update, _update_value
+# Arguments: None
+# Result: On
+#   Update if AUTO_UPDATE_INTERVAL + LAST_UPDATE_TIME less than printf "%(%s)T\\n" "-1"
+###################################################
+_auto_update() {
+    export REPO
+    command -v "${COMMAND_NAME}" 1> /dev/null &&
+        if [ -n "${REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+${TYPE_VALUE}}}}}" ]; then
+            current_time="$(date +'%s')"
+            [ "$((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL))" -lt "$(date +'%s')" ] && _update
+            _update_value LAST_UPDATE_TIME "${current_time}"
+        fi
+    return 0
+}
+
+###################################################
+# Install/Update/uninstall the script.
+# Globals: 4 variables
+#   Varibles - HOME, REPO, TYPE_VALUE, GLOBAL_INSTALL
+# Arguments: 1
+#   ${1} = uninstall or update
+# Result: On
+#   ${1} = nothing - Update the script if installed, otherwise install.
+#   ${1} = uninstall - uninstall the script
+###################################################
+_update() {
+    job_update="${1:-update}"
+    [ "${GLOBAL_INSTALL}" = true ] && ! [ "$(id -u)" = 0 ] && printf "%s\n" "Error: Need root access to update." && return 0
+    [ "${job_update}" = uninstall ] && job_uninstall="--uninstall"
+    _print_center "justify" "Fetching ${job_update} script.." "-"
+    repo_update="${REPO:-labbots/google-drive-upload}" type_value_update="${TYPE_VALUE:-latest}" cmd_update="${COMMAND_NAME:-gupload}" path_update="${INSTALL_PATH:-${HOME}/.google-drive-upload/bin}"
+    { [ "${TYPE:-}" != branch ] && type_value_update="$(_get_latest_sha release "${type_value_update}" "${repo_update}")"; } || :
+    if script_update="$(curl --compressed -Ls "https://github.com/${repo_update}/raw/${type_value_update}/install.sh")"; then
+        _clear_line 1
+        printf "%s\n" "${script_update}" | sh -s -- ${job_uninstall:-} --skip-internet-check --cmd "${cmd_update}" --path "${path_update}"
+        current_time="$(date +'%s')"
+        [ -z "${job_uninstall}" ] && _update_value LAST_UPDATE_TIME "${current_time}"
+    else
+        _clear_line 1
+        "${QUIET:-_print_center}" "justify" "Error: Cannot download" " ${job_update} script." "=" 1>&2
+        return 1
+    fi
+    return 0
+}
+
+###################################################
+# Update in-script values
+###################################################
+_update_value() {
+    command_path="${INSTALL_PATH:?}/${COMMAND_NAME}"
+    value_name="${1:-}" value="${2:-}"
+    script_without_value_and_shebang="$(grep -v "${value_name}=\".*\".* # added values" "${command_path}" | sed 1d)"
+    new_script="$(
+        sed -n 1p "${command_path}"
+        printf "%s\n" "${value_name}=\"${value}\" # added values"
+        printf "%s\n" "${script_without_value_and_shebang}"
+    )"
+    chmod +w "${command_path}" && printf "%s\n" "${new_script}" >| "${command_path}" && chmod -w "${command_path}"
+    return 0
+}
+EOF
 }
 
 ###################################################
@@ -417,10 +490,11 @@ _inject_values() {
     chmod +w "${INSTALL_PATH}/${COMMAND_NAME}"
     {
         printf "%s\n" "${shebang}"
-        for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL; do
+        for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL GUPLOAD_INSTALLED_WITH; do
             printf "%s\n" "${i}=\"$(eval printf "%s" \"\$"${i}"\")\" # added values"
         done
         printf "%s\n" "LATEST_INSTALLED_SHA=\"${LATEST_CURRENT_SHA}\" # added values"
+        _print_self_update_code # inject the self and auto update functions
         printf "%s\n" "${script_without_values_and_shebang}"
     } 1>| "${INSTALL_PATH}/${COMMAND_NAME}"
 
