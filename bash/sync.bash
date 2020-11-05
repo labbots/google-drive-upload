@@ -218,8 +218,7 @@ _check_and_upload() {
     [[ -n ${new_files[*]} ]] && printf "" >| "${ERROR_LOG}" && {
         declare -A Aseen && for new_file in "${new_files[@]}"; do
             { [[ ${Aseen[new_file]} ]] && continue; } || Aseen[${new_file}]=x
-            # shellcheck disable=SC2086
-            if "${COMMAND_NAME}" "${new_file}" ${ARGS}; then
+            if eval "\"${COMMAND_NAME}\"" "\"${new_file}\"" "${ARGS}"; then
                 printf "%s\n" "${new_file}" >> "${SUCCESS_LOG}"
             else
                 printf "%s\n" "${new_file}" >> "${ERROR_LOG}"
@@ -395,7 +394,7 @@ _setup_arguments() {
             -d | --directory)
                 _check_longoptions "${1}" "${2}"
                 GDRIVE_FOLDER="${2}" && shift
-                ARGS+=" -C ${GDRIVE_FOLDER} "
+                ARGS+=" -C \"${GDRIVE_FOLDER}\" "
                 ;;
             -j | --jobs)
                 [[ ${2} = v* ]] && SHOW_JOBS_VERBOSE="true" && shift

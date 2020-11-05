@@ -564,8 +564,7 @@ EOF
                 *"|:_//_:|${new_file_check_and_upload}|:_//_:|"*) continue ;;
                 *) aseen_check_and_upload="${aseen_check_and_upload}|:_//_:|${new_file_check_and_upload}|:_//_:|" ;;
             esac; do
-            # shellcheck disable=SC2086
-            if "${COMMAND_NAME}" "${new_file_check_and_upload}" ${ARGS}; then
+            if eval "\"${COMMAND_NAME}\"" "\"${new_file_check_and_upload}\"" "${ARGS}"; then
                 printf "%s\n" "${new_file_check_and_upload}" >> "${SUCCESS_LOG}"
             else
                 printf "%s\n" "${new_file_check_and_upload}" >> "${ERROR_LOG}"
@@ -756,7 +755,7 @@ _setup_arguments() {
             -d | --directory)
                 _check_longoptions "${1}" "${2}"
                 GDRIVE_FOLDER="${2}" && shift
-                ARGS=" ${ARGS} -C ${GDRIVE_FOLDER} "
+                ARGS=" ${ARGS} -C \"${GDRIVE_FOLDER}\" "
                 ;;
             -j | --jobs)
                 case "${2}" in
