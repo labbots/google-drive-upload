@@ -629,13 +629,35 @@ EOF
             if [ "${EMPTY}" != 1 ]; then
                 [ -z "${VERBOSE:-${VERBOSE_PROGRESS}}" ] && for _ in 1 2; do _clear_line 1; done
 
-                [ "${SUCCESS_STATUS}" -gt 0 ] &&
-                    FOLDER_ID="$(_tmp="$(printf "%s\n" "${DIRIDS}" | while read -r line; do printf "%s\n" "${line}" && break; done)" && printf "%s\n" "${_tmp%%"|:_//_:|"*}")" &&
-                    _share_and_print_link "${FOLDER_ID}"
+                FOLDER_ID="$(_tmp="$(printf "%s\n" "${DIRIDS}" | while read -r line; do printf "%s\n" "${line}" && break; done)" && printf "%s\n" "${_tmp%%"|:_//_:|"*}")"
+
+                [ "${SUCCESS_STATUS}" -gt 0 ] && _share_and_print_link "${FOLDER_ID}"
 
                 _newline "\n"
                 [ "${SUCCESS_STATUS}" -gt 0 ] && "${QUIET:-_print_center}" "justify" "Total Files " "Uploaded: ${SUCCESS_STATUS}" "="
-                [ "${ERROR_STATUS}" -gt 0 ] && "${QUIET:-_print_center}" "justify" "Total Files " "Failed: ${ERROR_STATUS}" "="
+                [ "${ERROR_STATUS}" -gt 0 ] && "${QUIET:-_print_center}" "justify" "Total Files " "Failed: ${ERROR_STATUS}" "=" && {
+                    # If running inside a terminal, then check if failed files are more than 25, if not, then print, else save in a log file
+                    if [ -t 1 ]; then
+                        { [ "${ERROR_STATUS}" -le 25 ] && printf "%s\n" "${ERROR_FILES}"; } || {
+                            epoch_time="$(date +'%s')" log_file_name="${0##*/}_${FOLDER_NAME}_${epoch_time}.failed"
+                            # handle in case the vivid random file name was already there
+                            i=0 && until ! [ -f "${log_file_name}" ]; do
+                                : $((i += 1)) && log_file_name="${0##*/}_${FOLDER_NAME}_$((epoch_time + i)).failed"
+                            done
+                            printf "%s\n%s\n%s\n\n%s\n%s\n" \
+                                "Folder name: ${FOLDER_NAME} | Folder ID: ${FOLDER_ID}" \
+                                "Run this command to retry the failed uploads:" \
+                                "    ${0##*/} --skip-duplicates \"${input}\" --root-dir \"${NEXTROOTDIRID}\" ${SKIP_SUBDIRS:+-s} ${PARALLEL_UPLOAD:+--parallel} ${PARALLEL_UPLOAD:+${NO_OF_PARALLEL_JOBS}}" \
+                                "Failed files:" \
+                                "${ERROR_FILES}" >> "${log_file_name}"
+                            printf "%s\n" "To see the failed files, open \"${log_file_name}\""
+                            printf "%s\n" "To retry the failed uploads only, use -d / --skip-duplicates flag. See log file for more help."
+                        }
+                        # if not running inside a terminal, print it all
+                    else
+                        printf "%s\n" "${ERROR_FILES}"
+                    fi
+                }
                 printf "\n"
             else
                 for _ in 1 2 3; do _clear_line 1; done

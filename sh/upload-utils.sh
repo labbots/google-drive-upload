@@ -101,7 +101,7 @@ _upload_file_main() {
         continue
     done
     [ -n "${4}" ] && {
-        { [ "${RETURN_STATUS}" = 1 ] && printf "%s\n" "${RETURN_STATUS}"; } || printf "%s\n" "${RETURN_STATUS}" 1>&2
+        { [ "${RETURN_STATUS}" = 1 ] && printf "%s\n" "${file_upload_file_main}"; } || printf "%s\n" "${file_upload_file_main}" 1>&2
     }
     return 0
 }
@@ -121,13 +121,15 @@ _upload_file_main() {
 _upload_folder() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
+    unset SUCCESS_STATUS SUCCESS_FILES ERROR_STATUS ERROR_FILES
     case "${mode_upload_folder}" in
         normal)
             [ "${PARSE_MODE}" = parse ] && _clear_line 1 && _newline "\n"
 
             while read -r file <&4; do
                 _upload_file_main "${PARSE_MODE}" "${file}" "${ID}"
-                : "$((RETURN_STATUS < 2 ? (SUCCESS_STATUS += 1) : (ERROR_STATUS += 1)))"
+                { [ "${RETURN_STATUS}" = 1 ] && : "$((SUCCESS_STATUS += 1))" && SUCCESS_FILES="$(printf "%b\n" "${SUCCESS_STATUS:+${SUCCESS_STATUS}\n}${file}")"; } ||
+                    { : "$((ERROR_STATUS += 1))" && ERROR_FILES="$(printf "%b\n" "${ERROR_STATUS:+${ERROR_STATUS}\n}${file}")"; }
                 if [ -n "${VERBOSE:-${VERBOSE_PROGRESS}}" ]; then
                     _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && _newline "\n"
                 else
@@ -162,8 +164,9 @@ EOF
                     _clear_line 1 && "${QUIET:-_print_center}" "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                 TOTAL="$((SUCCESS_STATUS + ERROR_STATUS))"
             done
-            SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))"
-            ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))"
+            SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))" SUCCESS_FILES="$(cat "${TMPFILE}"SUCCESS)"
+            ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))" ERROR_FILES="$(cat "${TMPFILE}"ERROR)"
+            export SUCCESS_FILES ERROR_FILES
             ;;
     esac
     return 0

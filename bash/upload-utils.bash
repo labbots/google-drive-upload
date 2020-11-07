@@ -101,7 +101,7 @@ _upload_file_main() {
         continue
     done
     [[ -n ${4} ]] && {
-        { [[ ${RETURN_STATUS} = 1 ]] && printf "%s\n" "${RETURN_STATUS}"; } || printf "%s\n" "${RETURN_STATUS}" 1>&2
+        { [[ ${RETURN_STATUS} = 1 ]] && printf "%s\n" "${file}"; } || printf "%s\n" "${file}" 1>&2
     }
     return 0
 }
@@ -121,13 +121,15 @@ _upload_file_main() {
 _upload_folder() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare mode="${1}" files="${3}" && PARSE_MODE="${2}" ID="${4:-}" && export PARSE_MODE ID
+    unset SUCCESS_STATUS SUCCESS_FILES ERROR_STATUS ERROR_FILES
     case "${mode}" in
         normal)
             [[ ${PARSE_MODE} = parse ]] && _clear_line 1 && _newline "\n"
 
             while read -u 4 -r file; do
                 _upload_file_main "${PARSE_MODE}" "${file}" "${ID}"
-                : "$((RETURN_STATUS < 2 ? (SUCCESS_STATUS += 1) : (ERROR_STATUS += 1)))"
+                { [[ ${RETURN_STATUS} = 1 ]] && : "$((SUCCESS_STATUS += 1))" && SUCCESS_FILES+="${file}"$'\n'; } ||
+                    { : "$((ERROR_STATUS += 1))" && ERROR_FILES+="${file}"$'\n'; }
                 if [[ -n ${VERBOSE:-${VERBOSE_PROGRESS}} ]]; then
                     _print_center "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && _newline "\n"
                 else
@@ -159,8 +161,8 @@ _upload_folder() {
                     _clear_line 1 && "${QUIET:-_print_center}" "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                 TOTAL="$((SUCCESS_STATUS + ERROR_STATUS))"
             done
-            SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
-            ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
+            SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)" SUCCESS_FILES="$(< "${TMPFILE}"SUCCESS)"
+            ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)" ERROR_FILES="$(< "${TMPFILE}"ERROR)"
             ;;
     esac
     return 0
