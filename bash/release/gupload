@@ -1164,8 +1164,12 @@ _setup_arguments() {
                 if [[ ${1} = -* ]]; then
                     [[ ${GUPLOAD_INSTALLED_WITH} = script ]] && {
                         case "${1}" in
-                            -u | --update) _check_debug && _update && exit "${?}" ;;
-                            --uninstall) _check_debug && _update uninstall && exit "${?}" ;;
+                            -u | --update)
+                                _check_debug && _update && { exit 0 || exit 1; }
+                                ;;
+                            --uninstall)
+                                _check_debug && _update uninstall && { exit 0 || exit 1; }
+                                ;;
                         esac
                     }
                     printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
