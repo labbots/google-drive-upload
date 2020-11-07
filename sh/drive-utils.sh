@@ -66,7 +66,7 @@ _clone_file() {
                 _print_center "justify" "Overwriting file.." "-"
                 { _file_id_clone_file="$(printf "%s\n" "${file_check_json_clone_file}" | _json_value id 1 1)" &&
                     post_data_clone_file="$(_drive_info "${_file_id_clone_file}" "parents,writersCanShare")"; } ||
-                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}"; }
+                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}" || return 1; }
                 if [ "${_file_id_clone_file}" != "${file_id_clone_file}" ]; then
                     _api_request -s \
                         -X DELETE \
@@ -256,7 +256,8 @@ _upload_file() {
                 "${QUIET:-_print_center}" "justify" "${slug_upload_file} already exists." "=" && return 0
             else
                 request_method_upload_file="PATCH"
-                _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" || { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}"; }
+                _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" ||
+                    { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}" || return 1; }
                 url_upload_file="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id_upload_file}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"addParents\": [\"${folder_id_upload_file}\"]}"
@@ -380,7 +381,7 @@ _remove_upload_session() {
 
 # wrapper to fully upload a file from scratch
 _full_upload() {
-    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}"; }
+    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}" || return 1; }
     _log_upload_session
     _upload_file_from_uri
     _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1

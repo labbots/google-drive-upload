@@ -65,7 +65,7 @@ _clone_file() {
                 _print_center "justify" "Overwriting file.." "-"
                 { _file_id="$(_json_value id 1 1 <<< "${file_check_json}")" &&
                     clone_file_post_data="$(_drive_info "${_file_id}" "parents,writersCanShare")"; } ||
-                    { _error_logging_upload "${name}" "${post_data:-${file_check_json}}"; }
+                    { _error_logging_upload "${name}" "${post_data:-${file_check_json}}" || return 1; }
                 if [[ ${_file_id} != "${file_id}" ]]; then
                     _api_request -s \
                         -X DELETE \
@@ -252,7 +252,8 @@ _upload_file() {
                 "${QUIET:-_print_center}" "justify" "${slug}" " already exists." "=" && return 0
             else
                 request_method="PATCH"
-                _file_id="$(_json_value id 1 1 <<< "${file_check_json}")" || { _error_logging_upload "${slug}" "${file_check_json}"; }
+                _file_id="$(_json_value id 1 1 <<< "${file_check_json}")" ||
+                    { _error_logging_upload "${slug}" "${file_check_json}" || return 1; }
                 url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]}"
@@ -376,7 +377,7 @@ _remove_upload_session() {
 
 # wrapper to fully upload a file from scratch
 _full_upload() {
-    _generate_upload_link || { _error_logging_upload "${slug}" "${uploadlink}"; }
+    _generate_upload_link || { _error_logging_upload "${slug}" "${uploadlink}" || return 1; }
     _log_upload_session
     _upload_file_from_uri
     _collect_file_info "${upload_body}" "${slug}" || return 1

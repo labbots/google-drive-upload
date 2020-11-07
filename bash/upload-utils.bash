@@ -24,7 +24,7 @@ _api_request() {
 ###################################################
 _collect_file_info() {
     declare json="${1}" info
-    FILE_ID="$(_json_value id 1 1 <<< "${json}")" || { _error_logging_upload "${2}" "${json}"; }
+    FILE_ID="$(_json_value id 1 1 <<< "${json}")" || { _error_logging_upload "${2}" "${json}" || return 1; }
     [[ -z ${LOG_FILE_ID} || -d ${LOG_FILE_ID} ]] && return 0
     info="Link: https://drive.google.com/open?id=${FILE_ID}
 Name: $(_json_value name 1 1 <<< "${json}" || :)
@@ -91,14 +91,18 @@ _upload_file_main() {
     retry="${RETRY:-0}" && unset RETURN_STATUS
     until [[ ${retry} -le 0 ]] && [[ -n ${RETURN_STATUS} ]]; do
         if [[ -n ${4} ]]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         else
-            _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         fi
-        sleep "$((_sleep += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
-        RETURN_STATUS=2 retry="$((retry - 1))" && continue
+        # decrease retry using -=, skip sleep if all retries done
+        [[ $((retry -= 1)) -lt 1 ]] && sleep "$((_sleep += 1))"
+        # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
+        continue
     done
-    { [[ ${RETURN_STATUS} = 1 ]] && printf "%b" "${4:+${RETURN_STATUS}\n}"; } || printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&2
+    [[ -n ${4} ]] && {
+        { [[ ${RETURN_STATUS} = 1 ]] && printf "%s\n" "${RETURN_STATUS}"; } || printf "%s\n" "${RETURN_STATUS}" 1>&2
+    }
     return 0
 }
 

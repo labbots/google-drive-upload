@@ -24,7 +24,7 @@ _api_request() {
 ###################################################
 _collect_file_info() {
     json_collect_file_info="${1}" info_collect_file_info=""
-    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}"; }
+    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}" || return 1; }
     { [ -z "${LOG_FILE_ID}" ] || [ -d "${LOG_FILE_ID}" ]; } && return 0
     info_collect_file_info="Link: https://drive.google.com/open?id=${FILE_ID}
 Name: $(printf "%s\n" "${json_collect_file_info}" | _json_value name 1 1 || :)
@@ -91,14 +91,18 @@ _upload_file_main() {
     retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
     until [ "${retry_upload_file_main}" -le 0 ] && [ -n "${RETURN_STATUS}" ]; do
         if [ -n "${4}" ]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         else
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         fi
-        sleep "$((sleep_upload_file_main += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
-        RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue
+        # decrease retry using -=, skip sleep if all retries done
+        [ "$((retry_upload_file_main -= 1))" -lt 1 ] && sleep "$((sleep_upload_file_main += 1))"
+        # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
+        continue
     done
-    printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&"${RETURN_STATUS}"
+    [ -n "${4}" ] && {
+        { [ "${RETURN_STATUS}" = 1 ] && printf "%s\n" "${RETURN_STATUS}"; } || printf "%s\n" "${RETURN_STATUS}" 1>&2
+    }
     return 0
 }
 

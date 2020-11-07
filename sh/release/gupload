@@ -397,7 +397,7 @@ _clone_file() {
                 _print_center "justify" "Overwriting file.." "-"
                 { _file_id_clone_file="$(printf "%s\n" "${file_check_json_clone_file}" | _json_value id 1 1)" &&
                     post_data_clone_file="$(_drive_info "${_file_id_clone_file}" "parents,writersCanShare")"; } ||
-                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}"; }
+                    { _error_logging_upload "${name_clone_file}" "${post_data_clone_file:-${file_check_json_clone_file}}" || return 1; }
                 if [ "${_file_id_clone_file}" != "${file_id_clone_file}" ]; then
                     _api_request -s \
                         -X DELETE \
@@ -587,7 +587,8 @@ _upload_file() {
                 "${QUIET:-_print_center}" "justify" "${slug_upload_file} already exists." "=" && return 0
             else
                 request_method_upload_file="PATCH"
-                _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" || { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}"; }
+                _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" ||
+                    { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}" || return 1; }
                 url_upload_file="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id_upload_file}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"addParents\": [\"${folder_id_upload_file}\"]}"
@@ -711,7 +712,7 @@ _remove_upload_session() {
 
 # wrapper to fully upload a file from scratch
 _full_upload() {
-    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}"; }
+    _generate_upload_link || { _error_logging_upload "${slug_upload_file}" "${uploadlink_upload_file}" || return 1; }
     _log_upload_session
     _upload_file_from_uri
     _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1
@@ -777,7 +778,7 @@ _api_request() {
 ###################################################
 _collect_file_info() {
     json_collect_file_info="${1}" info_collect_file_info=""
-    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}"; }
+    FILE_ID="$(printf "%s\n" "${json_collect_file_info}" | _json_value id 1 1)" || { _error_logging_upload "${2}" "${json_collect_file_info}" || return 1; }
     { [ -z "${LOG_FILE_ID}" ] || [ -d "${LOG_FILE_ID}" ]; } && return 0
     info_collect_file_info="Link: https://drive.google.com/open?id=${FILE_ID}
 Name: $(printf "%s\n" "${json_collect_file_info}" | _json_value name 1 1 || :)
@@ -844,14 +845,18 @@ _upload_file_main() {
     retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
     until [ "${retry_upload_file_main}" -le 0 ] && [ -n "${RETURN_STATUS}" ]; do
         if [ -n "${4}" ]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         else
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main}" "${dirid_upload_file_main}" && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         fi
-        sleep "$((sleep_upload_file_main += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
-        RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue
+        # decrease retry using -=, skip sleep if all retries done
+        [ "$((retry_upload_file_main -= 1))" -lt 1 ] && sleep "$((sleep_upload_file_main += 1))"
+        # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
+        continue
     done
-    printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&"${RETURN_STATUS}"
+    [ -n "${4}" ] && {
+        { [ "${RETURN_STATUS}" = 1 ] && printf "%s\n" "${RETURN_STATUS}"; } || printf "%s\n" "${RETURN_STATUS}" 1>&2
+    }
     return 0
 }
 
