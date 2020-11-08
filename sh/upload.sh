@@ -111,7 +111,7 @@ _setup_arguments() {
     [ $# = 0 ] && printf "Missing arguments\n" && return 1
     # Internal variables
     # De-initialize if any variables set already.
-    unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_LOCAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY
+    unset FOLDERNAME FINAL_LOCAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
     CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
@@ -269,9 +269,6 @@ _setup_arguments() {
 
     [ -n "${VERBOSE_PROGRESS}" ] && unset VERBOSE && CURL_PROGRESS=""
     [ -n "${QUIET}" ] && CURL_PROGRESS="-s"
-
-    # Get foldername, prioritise the input given by -C/--create-dir option.
-    FOLDERNAME="$(_extract_id "${FOLDERNAME:-${FOLDER_INPUT}}")"
 
     # If no input, then check if -C option was used or not.
     # check if given input exists ( file/folder )
@@ -471,8 +468,11 @@ _setup_root_dir() {
             ROOT_FOLDER="root"
             _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         } && printf "\n\n"
+    elif [ -z "${ROOT_FOLDER_NAME}" ]; then
+        _check_root_id_name _update_config # update default root folder name if not available
     fi
 
+    # fetch root folder name if rootdir different than default
     [ -z "${ROOT_FOLDER_NAME}" ] && _check_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
 
     return 0
