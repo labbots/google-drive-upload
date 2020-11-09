@@ -76,7 +76,7 @@ _cleanup_config() {
 
     ! [ -f "${config}" ] && return 0
 
-    while read -r line; do
+    while read -r line && [[ -n ${line} ]]; do
         expiry_value_name="${line%%=*}"
         token_value_name="${expiry_value_name%%_EXPIRY}"
 
