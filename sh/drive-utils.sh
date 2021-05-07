@@ -388,7 +388,7 @@ _share_id() {
     unset post_data_share_id response_share_id
 
     "${EXTRA_LOG}" "justify" "Sharing.." "-" 1>&2
-    post_data_share_id="{\"role\":\"${role_share_id}\",\"type\":\"${type_share_id:-anyone}\"${share_email_share_id:+,\\\"emailAddress\\\":\\\"${share_email_share_id}\\\"}}"
+    post_data_share_id="{\"role\":\"${role_share_id}\",\"type\":\"${type_share_id:-anyone}\"${share_email_share_id:+,\"emailAddress\":\"${share_email_share_id}\"}}"
 
     response_share_id="$(_api_request "${CURL_PROGRESS_EXTRA}" \
         -X POST \

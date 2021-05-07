@@ -380,11 +380,11 @@ _full_upload() {
 ###################################################
 _share_id() {
     [[ $# -lt 2 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare id="${1}" share_email="${2}" role="reader" type="${share_email:+user}"
-    declare type share_post_data share_post_data share_response
+    declare id="${1}" share_email="${2}" role="reader"
+    declare type="${share_email:+user}" share_post_data share_post_data share_response
 
     "${EXTRA_LOG}" "justify" "Sharing.." "-" 1>&2
-    share_post_data="{\"role\":\"${role}\",\"type\":\"${type:-anyone}\"${share_email:+,\\\"emailAddress\\\":\\\"${share_email}\\\"}}"
+    share_post_data="{\"role\":\"${role}\",\"type\":\"${type:-anyone}\"${share_email:+,\"emailAddress\":\"${share_email}\"}}"
 
     share_response="$(_api_request "${CURL_PROGRESS_EXTRA}" \
         -X POST \

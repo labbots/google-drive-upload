@@ -108,7 +108,7 @@ _cleanup_config() {
 #   Success - Set all the variables
 #   Error   - Print error message and exit
 # Reference:
-#   Email Regex - https://stackoverflow.com/a/57295993
+#   Email Regex - https://gist.github.com/guessi/82a73ee7eb2b1216eb9db17bb8d65dd1
 ###################################################
 _setup_arguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
@@ -209,12 +209,10 @@ _setup_arguments() {
                 ;;
             -S | --share)
                 SHARE="_share_id"
-                EMAIL_REGEX="^([A-Za-z]+[A-Za-z0-9]*\+?((\.|\-|\_)?[A-Za-z]+[A-Za-z0-9]*)*)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
-                [[ -n ${1} && ! ${1} = -* ]] && SHARE_EMAIL="${2}" && {
-                    ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
-                    shift
-                }
-                export SHARE_EMAIL
+                EMAIL_REGEX="^(([A-Za-z0-9]+((\.|\-|\_|\+)?[A-Za-z0-9]?)*[A-Za-z0-9]+)|[A-Za-z0-9]+)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
+                if [[ -n ${2} && ! ${2} = -* && ${2} =~ ${EMAIL_REGEX} ]]; then
+                    SHARE_EMAIL="${2}" && shift && export SHARE_EMAIL
+                fi
                 ;;
             --speed)
                 _check_longoptions "${1}" "${2}"
