@@ -424,7 +424,7 @@ _process_arguments() {
         [ -z "${HIDE_INFO}" ] && {
             _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
             _support_ansi_escapes && [ "$((COLUMNS))" -gt 45 ] 2>| /dev/null && _print_center "normal" '^ ^ ^' ' '
-            _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
+            "${QUIET:-_print_center}" "normal" "https://drive.google.com/open?id=${1:-}" " "
         }
         return 0
     }
