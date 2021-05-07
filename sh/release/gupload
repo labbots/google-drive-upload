@@ -38,7 +38,6 @@ _bytes_to_human() {
 #             Check QUIET, then check terminal size and enable print functions accordingly.
 ###################################################
 _check_debug() {
-    _print_center_quiet() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
     if [ -n "${DEBUG}" ]; then
         set -x && PS4='-> '
         _print_center() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
@@ -77,7 +76,7 @@ _check_internet() {
     if ! _timeout 10 curl -Is google.com --compressed; then
         _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
-        exit 1
+        return 1
     fi
     _clear_line 1
 }
@@ -256,6 +255,30 @@ _print_center() {
 }
 
 ###################################################
+# Quiet version of _print_center
+###################################################
+_print_center_quiet() {
+    { [ $# = 3 ] && printf "%s\n" "${2}"; } || printf "%s%s\n" "${2}" "${3}"
+}
+
+###################################################
+# Evaluates value1=value2
+# Globals: None
+# Arguments: 3
+#   ${1} = direct ( d ) or indirect ( i ) - ( evaluation mode )
+#   ${2} = var name
+#   ${3} = var value
+# Result: export value1=value2
+###################################################
+_set_value() {
+    mode_set_value="${1:?}" var_set_value="${2:?}" value_set_value="${3:?}"
+    case "${mode_set_value}" in
+        d | direct) export "${var_set_value}=${value_set_value}" ;;
+        i | indirect) export "${var_set_value}=$(eval printf "%s" \"\$"${value_set_value}"\")" ;;
+    esac
+}
+
+###################################################
 # Check if script terminal supports ansi escapes
 # Globals: 1 variable
 #   TERM
@@ -308,10 +331,11 @@ _update_config() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     value_name_update_config="${1}" value_update_config="${2}" config_path_update_config="${3}"
     ! [ -f "${config_path_update_config}" ] && : >| "${config_path_update_config}" # If config file doesn't exist.
-    chmod u+w "${config_path_update_config}"
+    chmod u+w "${config_path_update_config}" || return 1
     printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name_update_config}=" "${config_path_update_config}" || :)" \
-        "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}"
-    chmod a-w-r-x,u+r "${config_path_update_config}"
+        "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}" || return 1
+    chmod a-w-r-x,u+r "${config_path_update_config}" || return 1
+    return 0
 }
 
 ###################################################
@@ -330,6 +354,492 @@ _url_encode() (
   q = y ~ /[[:alnum:]]_.!~*\47()-]/ ? q y : q sprintf("%%%02X", z[y])
   print q}' "${1}"
 )
+# auth utils for Google Drive
+# shellcheck source=/dev/null
+
+###################################################
+# Check if account name is valid by a regex expression
+# Globals: None
+# Arguments: 1
+#   ${1} = Account name
+# Result: read description and return 1 or 0
+###################################################
+_account_name_valid() {
+    name_account_name_valid="${1:?}" account_name_regex_account_name_valid='^([A-Za-z0-9_])+$'
+    printf "%s\n" "${name_account_name_valid}" | grep -qE "${account_name_regex_account_name_valid}" || return 1
+    return 0
+}
+
+###################################################
+# Check if account exists
+# First check if the given account is in correct format
+# Globals: 2 functions
+#   _set_value, _account_name_valid
+# Arguments: 1
+#   ${1} = Account name
+# Result: read description and return 1 or 0
+###################################################
+_account_exists() {
+    name_account_exists="${1:-}" client_id_account_exists="" client_secret_account_exists="" refresh_token_account_exists=""
+    _account_name_valid "${name_account_exists}" || return 1
+    _set_value indirect client_id_account_exists "ACCOUNT_${name_account_exists}_CLIENT_ID"
+    _set_value indirect client_secret_account_exists "ACCOUNT_${name_account_exists}_CLIENT_SECRET"
+    _set_value indirect refresh_token_account_exists "ACCOUNT_${name_account_exists}_REFRESH_TOKEN"
+    [ -z "${client_id_account_exists:+${client_secret_account_exists:+${refresh_token_account_exists}}}" ] && return 1
+    return 0
+}
+
+###################################################
+# Show all accounts configured in config file
+# Globals: 2 variables, 4 functions
+#   Variable - CONFIG, QUIET
+#   Functions - _account_exists, _set_value, _print_center, _reload_config
+# Arguments: None
+# Result: SHOW all accounts, export COUNT and ACC_${count}_ACC dynamic variables
+#         or print "No accounts configured yet."
+###################################################
+_all_accounts() {
+    { _reload_config && _handle_old_config; } || return 1
+    COUNT=0
+    while read -r account <&4 && [ -n "${account}" ]; do
+        _account_exists "${account}" &&
+            { [ "${COUNT}" = 0 ] && "${QUIET:-_print_center}" "normal" " All available accounts. " "=" || :; } &&
+            printf "%b" "$((COUNT += 1)). ${account} \n" && _set_value direct "ACC_${COUNT}_ACC" "${account}"
+    done 4<< EOF
+$(grep -oE '^ACCOUNT_.*_CLIENT_ID' "${CONFIG}" | sed -e "s/ACCOUNT_//g" -e "s/_CLIENT_ID//g")
+EOF
+    { [ "${COUNT}" -le 0 ] && "${QUIET:-_print_center}" "normal" " No accounts configured yet. " "=" 1>&2; } || printf '\n'
+    return 0
+}
+
+###################################################
+# Setup a new account name
+# If given account name is configured already, then ask for name
+# after name has been properly setup, export ACCOUNT_NAME var
+# Globals: 1 variable, 5 functions
+#   Variable  - QUIET
+#   Functions - _print_center, _account_exists, _clear_line, _account_name_valid, _reload_config
+# Arguments: 1
+#   ${1} = Account name ( optional )
+# Result: read description and export ACCOUNT_NAME NEW_ACCOUNT_NAME
+###################################################
+_set_new_account_name() {
+    _reload_config || return 1
+    new_account_name_set_new_account_name="${1:-}" && unset name_valid_set_new_account_name
+    [ -z "${new_account_name_set_new_account_name}" ] && {
+        _all_accounts 2>| /dev/null
+        "${QUIET:-_print_center}" "normal" " New account name: " "="
+        "${QUIET:-_print_center}" "normal" "Info: Account names can only contain alphabets / numbers / dashes." " " && printf '\n'
+    }
+    until [ -n "${name_valid_set_new_account_name}" ]; do
+        if [ -n "${new_account_name_set_new_account_name}" ]; then
+            if _account_name_valid "${new_account_name_set_new_account_name}"; then
+                if _account_exists "${new_account_name_set_new_account_name}"; then
+                    "${QUIET:-_print_center}" "normal" " Warning: Given account ( ${new_account_name_set_new_account_name} ) already exists, input different name. " "-" 1>&2
+                    unset new_account_name_set_new_account_name && continue
+                else
+                    export new_account_name_set_new_account_name="${new_account_name_set_new_account_name}" ACCOUNT_NAME="${new_account_name_set_new_account_name}" &&
+                        name_valid_set_new_account_name="true" && continue
+                fi
+            else
+                "${QUIET:-_print_center}" "normal" " Warning: Given account name ( ${new_account_name_set_new_account_name} ) invalid, input different name. " "-"
+                unset new_account_name_set_new_account_name && continue
+            fi
+        else
+            [ -t 1 ] || { "${QUIET:-_print_center}" "normal" " Error: Not running in an interactive terminal, cannot ask for new account name. " 1>&2 && return 1; }
+            printf -- "-> \e[?7l"
+            read -r new_account_name_set_new_account_name
+            printf '\e[?7h'
+        fi
+        _clear_line 1
+    done
+    "${QUIET:-_print_center}" "normal" " Given account name: ${NEW_ACCOUNT_NAME} " "="
+    export ACCOUNT_NAME="${NEW_ACCOUNT_NAME}"
+    return 0
+}
+
+###################################################
+# Delete a account from config file
+# Globals: 2 variables, 3 functions
+#   Variables - CONFIG, QUIET
+#   Functions - _account_exists, _print_center, _reload_config
+# Arguments: None
+# Result: check if account exists and delete from config, else print error message
+###################################################
+_delete_account() {
+    { _reload_config && _handle_old_config; } || return 1
+    account_delete_account="${1:?Error: give account name}" && unset regex_delete_account config_without_values_delete_account
+    if _account_exists "${account_delete_account}"; then
+        regex_delete_account="^ACCOUNT_${account_delete_account}_(CLIENT_ID=|CLIENT_SECRET=|REFRESH_TOKEN=|ROOT_FOLDER=|ROOT_FOLDER_NAME=|ACCESS_TOKEN=|ACCESS_TOKEN_EXPIRY=)|DEFAULT_ACCOUNT=\"${account_delete_account}\""
+        config_without_values_delete_account="$(grep -vE "${regex_delete_account}" "${CONFIG}")"
+        chmod u+w "${CONFIG}" || return 1 # change perms to edit
+        printf "%s\n" "${config_without_values_delete_account}" >| "${CONFIG}" || return 1
+        chmod "a-w-r-x,u+r" "${CONFIG}" || return 1 # restore perms
+        "${QUIET:-_print_center}" "normal" " Successfully deleted account ( ${account_delete_account} ) from config. " "-"
+    else
+        "${QUIET:-_print_center}" "normal" " Error: Cannot delete account ( ${account_delete_account} ) from config. No such account exists " "-" 1>&2
+    fi
+    return 0
+}
+
+###################################################
+# handle legacy config
+# this will be triggered only if old config values are present, convert to new format
+# new account will be created with "default" name, if default already taken, then add a number as suffix
+# Globals: 7 variables, 2 functions
+# Variables - CLIENT_ID  CLIENT_SECRET, REFRESH_TOKEN, ROOT_FOLDER, ROOT_FOLDER_NAME CONFIG, ACCOUNT_NAME
+#   Functions - _account_exists, _reload_config
+# Arguments: None
+###################################################
+_handle_old_config() {
+    export CLIENT_ID CLIENT_SECRET REFRESH_TOKEN # to handle a shellcheck warning
+    # only try to convert the if all three values are present
+    [ -n "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
+        account_name_handle_old_config="default" regex_check_handle_old_config config_without_values_handle_old_config count_handle_old_config
+        # first try to name the new account as default, otherwise try to add numbers as suffix
+        until ! _account_exists "${account_name_handle_old_config}"; do
+            account_name_handle_old_config="${account_name_handle_old_config}$((count_handle_old_config += 1))"
+        done
+        regex_check_handle_old_config="^(CLIENT_ID=|CLIENT_SECRET=|REFRESH_TOKEN=|ROOT_FOLDER=|ROOT_FOLDER_NAME=|ACCESS_TOKEN=|ACCESS_TOKEN_EXPIRY=)"
+        config_without_values_handle_old_config="$(grep -vE "${regex_check_handle_old_config}" "${CONFIG}")"
+        chmod u+w "${CONFIG}" || return 1 # change perms to edit
+        printf "%s\n%s\n%s\n%s\n%s\n%s\n" \
+            "ACCOUNT_${account_name_handle_old_config}_CLIENT_ID=\"${CLIENT_ID}\"" \
+            "ACCOUNT_${account_name_handle_old_config}_CLIENT_SECRET=\"${CLIENT_SECRET}\"" \
+            "ACCOUNT_${account_name_handle_old_config}_REFRESH_TOKEN=\"${REFRESH_TOKEN}\"" \
+            "ACCOUNT_${account_name_handle_old_config}_ROOT_FOLDER=\"${ROOT_FOLDER}\"" \
+            "ACCOUNT_${account_name_handle_old_config}_ROOT_FOLDER_NAME=\"${ROOT_FOLDER_NAME}\"" \
+            "${config_without_values_handle_old_config}" >| "${CONFIG}" || return 1
+
+        chmod "a-w-r-x,u+r" "${CONFIG}" || return 1 # restore perms
+
+        _reload_config || return 1 # reload config file
+    }
+    return 0
+}
+
+###################################################
+# handle old config values, new account creation, custom account name, updating default config and account
+# start token service if applicable
+# Globals: 12 variables, 7 functions
+#   Variables - DEFAULT_CONFIG, NEW_ACCOUNT_NAME, CUSTOM_ACCOUNT_NAME, DELETE_ACCOUNT_NAME, LIST_ACCOUNTS, QUIET
+#               UPDATE_DEFAULT_ACCOUNT, UPDATE_DEFAULT_CONFIG, CONFIG_INFO, CONTINUE_WITH_NO_INPUT
+#   Functions - _reload_config, _handle_old_config, _set_new_account_name, _account_exists, _all_accounts
+#               _check_account_credentials, _token_bg_service, _print_center, _update_config, _set_value
+# Arguments: None
+# Result: read description and start access token check in bg if required
+###################################################
+_check_credentials() {
+    { _reload_config && _handle_old_config; } || return 1
+    # set account name to default account name
+    ACCOUNT_NAME="${DEFAULT_ACCOUNT}"
+    # if old values exist in config
+
+    if [ -n "${NEW_ACCOUNT_NAME}" ]; then
+        # create new account, --create-account flag
+        _set_new_account_name "${NEW_ACCOUNT_NAME}" || return 1
+        _check_account_credentials "${ACCOUNT_NAME}" || return 1
+    else
+        if [ -n "${CUSTOM_ACCOUNT_NAME}" ]; then
+            if _account_exists "${CUSTOM_ACCOUNT_NAME}"; then
+                ACCOUNT_NAME="${CUSTOM_ACCOUNT_NAME}"
+            else
+                # error out in case CUSTOM_ACCOUNT_NAME is invalid
+                "${QUIET:-_print_center}" "normal" " Error: No such account ( ${CUSTOM_ACCOUNT_NAME} ) exists. " "-" && return 1
+            fi
+        elif [ -n "${DEFAULT_ACCOUNT}" ]; then
+            # check if default account if valid or not, else set account name to nothing and remove default account in config
+            _account_exists "${DEFAULT_ACCOUNT}" || {
+                _update_config DEFAULT_ACCOUNT "" "${CONFIG}" && unset DEFAULT_ACCOUNT ACCOUNT_NAME && UPDATE_DEFAULT_ACCOUNT="_update_config"
+            }
+            # UPDATE_DEFAULT_ACCOUNT to true so that default config is updated later
+        else
+            UPDATE_DEFAULT_ACCOUNT="_update_config" # as default account doesn't exist
+        fi
+
+        # in case no account name was set
+        if [ -z "${ACCOUNT_NAME}" ]; then
+            # if accounts are configured but default account is not set
+            if _all_accounts 2>| /dev/null && [ "${COUNT}" -gt 0 ]; then
+                # when only 1 account is configured, then set it as default
+                if [ "${COUNT}" -eq 1 ]; then
+                    _set_value indirect ACCOUNT_NAME "ACC_1_ACC" # ACC_1_ACC comes from _all_accounts function
+                else
+                    "${QUIET:-_print_center}" "normal" " Above accounts are configured, but default one not set. " "="
+                    if [ -t 1 ]; then
+                        "${QUIET:-_print_center}" "normal" " Choose default account: " "-"
+                        until [ -n "${ACCOUNT_NAME}" ]; do
+                            printf -- "-> \e[?7l"
+                            read -r account_name_check_credentials
+                            printf '\e[?7h'
+                            if [ "${account_name_check_credentials}" -gt 0 ] && [ "${account_name_check_credentials}" -le "${COUNT}" ]; then
+                                _set_value indirect ACCOUNT_NAME "ACC_${COUNT}_ACC"
+                            else
+                                _clear_line 1
+                            fi
+                        done
+                    else
+                        # if not running in a terminal then choose 1st one as default
+                        printf "%s\n" "Warning: Script is not running in a terminal, choosing first account as default."
+                        _set_value indirect ACCOUNT_NAME "ACC_1_ACC" # ACC_1_ACC comes from _all_accounts function
+                    fi
+                fi
+            else
+                _set_new_account_name "" || return 1
+                _check_account_credentials "${ACCOUNT_NAME}" || return 1
+            fi
+        fi
+        _check_account_credentials "${ACCOUNT_NAME}" || return 1
+    fi
+
+    "${UPDATE_DEFAULT_ACCOUNT:-:}" DEFAULT_ACCOUNT "${ACCOUNT_NAME}" "${CONFIG}" # update default account if required
+    "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"            # update default config if required
+
+    [ -n "${CONTINUE_WITH_NO_INPUT}" ] || _token_bg_service # launch token bg service
+    return 0
+}
+
+###################################################
+# check credentials for a given account name
+# Globals: 3 functions
+# Functions - _check_client, _check_refresh_token, _check_access_token
+# Arguments: 2
+#   ${1} = Account name
+# Result: read description, return 1 or 0
+###################################################
+_check_account_credentials() {
+    account_name_check_account_credentials="${1:?Give account name}"
+    {
+        _check_client ID "${account_name_check_account_credentials}" &&
+            _check_client SECRET "${account_name_check_account_credentials}" &&
+            _check_refresh_token "${account_name_check_account_credentials}" &&
+            _check_access_token "${account_name_check_account_credentials}" check
+    } || return 1
+    return 0
+}
+
+###################################################
+# Check client id or secret and ask if required
+# Globals: 4 variables, 3 functions
+# Variables - CONFIG, QUIET, CLIENT_ID_${ACCOUNT_NAME}, CLIENT_SECRET_${ACCOUNT_NAME}
+#   Functions - _print_center, _update_config, _set_value
+# Arguments: 2
+#   ${1} = ID or SECRET
+#   ${2} = Account name ( optional - if not given, then just CLIENT_[ID|SECRET] var is used )
+# Result: read description and export ACCOUNT_name_CLIENT_[ID|SECRET] CLIENT_[ID|SECRET]
+###################################################
+_check_client() {
+    type_check_client="CLIENT_${1:?Error: ID or SECRET}" account_name_check_client="${2:-}"
+    type_value_check_client="" type_regex_check_client="" &&
+        unset type_name_check_client valid_check_client client_check_client message_check_client
+    export client_id_regex='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com' client_secret_regex='[0-9A-Za-z_-]+'
+    type_name_check_client="${account_name_check_client:+ACCOUNT_${account_name_check_client}_}${type_check_client}"
+
+    # set the type_value to the actual value of ACCOUNT_${account_name}_[ID|SECRET]
+    _set_value indirect type_value_check_client "${type_name_check_client}"
+    # set the type_regex to the actual value of client_id_regex or client_secret_regex
+    _set_value indirect type_regex_check_client "${type_check_client}_regex"
+
+    until [ -n "${type_value_check_client}" ] && [ -n "${valid_check_client}" ]; do
+        [ -n "${type_value_check_client}" ] && {
+            if printf "%s\n" "${type_value_check_client}" | grep -qE "${type_regex_check_client}"; then
+                [ -n "${client_check_client}" ] && { _update_config "${type_name_check_client}" "${type_value_check_client}" "${CONFIG}" || return 1; }
+                valid_check_client="true" && continue
+            else
+                { [ -n "${client_check_client}" ] && message_check_client="- Try again"; } || message_check_client="in config ( ${CONFIG} )"
+                "${QUIET:-_print_center}" "normal" " Invalid Client ${1} ${message_check_client} " "-" && unset "${type_name_check_client}" client
+            fi
+        }
+        [ -z "${client_check_client}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ${1} " "-"
+        [ -n "${client_check_client}" ] && _clear_line 1
+        printf -- "-> "
+        read -r "${type_name_check_client?}" && client_check_client=1
+        _set_value indirect type_value_check_client "${type_name_check_client}"
+    done
+
+    # export ACCOUNT_name_CLIENT_[ID|SECRET]
+    _set_value direct "${type_name_check_client}" "${type_value_check_client}"
+    # export CLIENT_[ID|SECRET]
+    _set_value direct "${type_check_client}" "${type_value_check_client}"
+
+    return 0
+}
+
+###################################################
+# Check refresh token and ask if required
+# Globals: 8 variables, 4 functions
+#   Variables -  CLIENT_ID, CLIENT_SECRET, REDIRECT_URI, TOKEN_URL, CONFIG, QUIET
+#   Functions - _set_value, _print_center, _update_config, _check_access_token
+# Arguments: 1
+#   ${1} = Account name ( optional - if not given, then just REFRESH_TOKEN var is used )
+# Result: read description & export REFRESH_TOKEN ACCOUNT_${account_name}_REFRESH_TOKEN
+###################################################
+_check_refresh_token() {
+    # bail out before doing anything if client id and secret is not present, unlikely to happen but just in case
+    [ -z "${CLIENT_ID:+${CLIENT_SECRET}}" ] && return 1
+    account_name_check_refresh_token="${1:-}"
+    refresh_token_regex='[0-9]//[0-9A-Za-z_-]+' authorization_code_regex='[0-9]/[0-9A-Za-z_-]+'
+    refresh_token_name_check_refresh_token="${account_name_check_refresh_token:+ACCOUNT_${account_name_check_refresh_token}_}REFRESH_TOKEN"
+
+    _set_value indirect refresh_token_value_check_refresh_token "${refresh_token_name_check_refresh_token}"
+
+    [ -n "${refresh_token_value_check_refresh_token}" ] && {
+        ! printf "%s\n" "${refresh_token_value_check_refresh_token}" | grep -qE "${refresh_token_regex}" &&
+            "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-" && unset refresh_token_value_check_refresh_token
+    }
+
+    [ -z "${refresh_token_value_check_refresh_token}" ] && {
+        printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
+        printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
+        read -r refresh_token_value_check_refresh_token
+        if [ -n "${refresh_token_value_check_refresh_token}" ]; then
+            "${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
+            if printf "%s\n" "${refresh_token_value_check_refresh_token}" | grep -qE "${refresh_token_regex}"; then
+                _set_value direct REFRESH_TOKEN "${refresh_token_value_check_refresh_token}"
+                { _check_access_token "${account_name_check_refresh_token}" skip_check &&
+                    _update_config "${refresh_token_name_check_refresh_token}" "${refresh_token_value_check_refresh_token}" "${CONFIG}" &&
+                    _clear_line 1; } || check_error_check_refresh_token=true
+            else
+                check_error_check_refresh_token=true
+            fi
+            [ -n "${check_error_check_refresh_token}" ] && "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-" && unset refresh_token_value_check_refresh_token
+        else
+            "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-" && unset refresh_token_value_check_refresh_token
+        fi
+
+        [ -z "${refresh_token_value_check_refresh_token}" ] && {
+            printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
+            URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
+            printf "\n%s\n" "${URL}"
+            unset AUTHORIZATION_CODE authorization_code AUTHORIZATION_CODE_VALID response
+            until [ -n "${AUTHORIZATION_CODE}" ] && [ -n "${AUTHORIZATION_CODE_VALID}" ]; do
+                [ -n "${AUTHORIZATION_CODE}" ] && {
+                    if printf "%s\n" "${AUTHORIZATION_CODE}" | grep -qE "${authorization_code_regex}"; then
+                        AUTHORIZATION_CODE_VALID="true" && continue
+                    else
+                        "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
+                    fi
+                }
+                { [ -z "${authorization_code}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
+                printf -- "-> \e[?7l"
+                read -r AUTHORIZATION_CODE && authorization_code=1
+                printf '\e[?7h'
+            done
+            response_check_refresh_token="$(curl --compressed "${CURL_PROGRESS}" -X POST \
+                --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
+            _clear_line 1 1>&2
+
+            refresh_token_value_check_refresh_token="$(printf "%s\n" "${response_check_refresh_token}" | _json_value refresh_token 1 1)" ||
+                { printf "%s\n" "Error: Cannot fetch refresh token, make sure the authorization code was correct." && return 1; }
+
+            _set_value direct REFRESH_TOKEN "${refresh_token_value_check_refresh_token}"
+            { _check_access_token "${account_name_check_refresh_token}" skip_check "${response_check_refresh_token}" &&
+                _update_config "${refresh_token_name_check_refresh_token}" "${refresh_token_value_check_refresh_token}" "${CONFIG}"; } || return 1
+        }
+        printf "\n"
+    }
+
+    # export account_name_check_refresh_token_REFRESH_TOKEN
+    _set_value direct "${refresh_token_name_check_refresh_token}" "${refresh_token_value_check_refresh_token}"
+    # export REFRESH_TOKEN
+    _set_value direct REFRESH_TOKEN "${refresh_token_value_check_refresh_token}"
+
+    return 0
+}
+
+###################################################
+# Check access token and create/update if required
+# Also update in config
+# Globals: 9 variables, 3 functions
+#   Variables - CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, TOKEN_URL, CONFIG, API_URL, API_VERSION, QUIET
+#   Functions - _print_center, _update_config, _set_value
+# Arguments: 2
+#   ${1} = Account name ( if not given, then just ACCESS_TOKEN var is used )
+#   ${2} = if skip_check, then force create access token, else check with regex and expiry
+#   ${3} = json response ( optional )
+# Result: read description & export ACCESS_TOKEN ACCESS_TOKEN_EXPIRY
+###################################################
+_check_access_token() {
+    # bail out before doing anything if client id|secret or refresh token is not present, unlikely to happen but just in case
+    [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && return 1
+
+    account_name_check_access_token="${1:-}" no_check_check_access_token="${2:-false}" response_json_check_access_token="${3:-}"
+    unset token_name_check_access_token token_expiry_name_check_access_token token_value_check_access_token token_expiry_value_check_access_token response_check_access_token
+    access_token_regex='ya29\.[0-9A-Za-z_-]+'
+    token_name_check_access_token="${account_name_check_access_token:+ACCOUNT_${account_name_check_access_token}_}ACCESS_TOKEN"
+    token_expiry_name_check_access_token="${token_name_check_access_token}_EXPIRY"
+
+    _set_value indirect token_value_check_access_token "${token_name_check_access_token}"
+    _set_value indirect token_expiry_value_check_access_token "${token_expiry_name_check_access_token}"
+
+    [ "${no_check_check_access_token}" = skip_check ] || [ -z "${token_value_check_access_token}" ] || [ "${token_expiry_value_check_access_token:-0}" -lt "$(date +"%s")" ] || ! printf "%s\n" "${token_value_check_access_token}" | grep -qE "${access_token_regex}" && {
+        response_check_access_token="${response_json_check_access_token:-$(curl --compressed -s -X POST --data \
+            "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
+
+        if token_value_check_access_token="$(printf "%s\n" "${response_check_access_token}" | _json_value access_token 1 1)"; then
+            token_expiry_value_check_access_token="$(($(date +"%s") + $(printf "%s\n" "${response_check_access_token}" | _json_value expires_in 1 1) - 1))"
+            _update_config "${token_name_check_access_token}" "${token_value_check_access_token}" "${CONFIG}" || return 1
+            _update_config "${token_expiry_name_check_access_token}" "${token_expiry_value_check_access_token}" "${CONFIG}" || return 1
+        else
+            "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
+            printf "%s\n" "${response_check_access_token}" 1>&2
+            return 1
+        fi
+    }
+
+    # export ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY
+    _set_value direct ACCESS_TOKEN "${token_value_check_access_token}"
+    _set_value direct ACCESS_TOKEN_EXPIRY "${token_expiry_value_check_access_token}"
+
+    # export INITIAL_ACCESS_TOKEN which is used on script cleanup
+    _set_value direct INITIAL_ACCESS_TOKEN "${ACCESS_TOKEN}"
+    return 0
+}
+
+###################################################
+# load config file if available, else create a empty file
+# uses global variable CONFIG
+###################################################
+_reload_config() {
+    { [ -r "${CONFIG}" ] && . "${CONFIG}"; } || { printf "" >> "${CONFIG}" || return 1; }
+    return 0
+}
+
+###################################################
+# launch a background service to check access token and update it
+# checks ACCESS_TOKEN_EXPIRY, try to update before 5 mins of expiry, a fresh token gets 60 mins
+# process will be killed when script exits or "${MAIN_PID}" is killed
+# Globals: 4 variables, 1 function
+#   Variables - ACCESS_TOKEN, ACCESS_TOKEN_EXPIRY, MAIN_PID, TMPFILE
+#   Functions - _check_access_token
+# Arguments: None
+# Result: read description & export ACCESS_TOKEN_SERVICE_PID
+###################################################
+_token_bg_service() {
+    [ -z "${MAIN_PID}" ] && return 0 # don't start if MAIN_PID is empty
+    printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
+    {
+        until ! kill -0 "${MAIN_PID}" 2>| /dev/null 1>&2; do
+            . "${TMPFILE}_ACCESS_TOKEN"
+            CURRENT_TIME="$(date +"%s")"
+            REMAINING_TOKEN_TIME="$((ACCESS_TOKEN_EXPIRY - CURRENT_TIME))"
+            if [ "${REMAINING_TOKEN_TIME}" -le 300 ]; then
+                # timeout after 30 seconds, it shouldn't take too long anyway, and update tmp config
+                CONFIG="${TMPFILE}_ACCESS_TOKEN" _timeout 30 _check_access_token "" skip_check || :
+            else
+                TOKEN_PROCESS_TIME_TO_SLEEP="$(if [ "${REMAINING_TOKEN_TIME}" -le 301 ]; then
+                    printf "0\n"
+                else
+                    printf "%s\n" "$((REMAINING_TOKEN_TIME - 300))"
+                fi)"
+                sleep "${TOKEN_PROCESS_TIME_TO_SLEEP}"
+            fi
+            sleep 1
+        done
+    } &
+    export ACCESS_TOKEN_SERVICE_PID="${!}"
+    return 0
+}
 
 ###################################################
 # Search for an existing file on gdrive with write permission.
@@ -509,28 +1019,6 @@ _extract_id() {
         *'drive.google.com'*'drive'*'folders'*) _tmp="${id_extract_id##*\/folders\/}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
     esac
     printf "%b" "${id_extract_id:+${id_extract_id}\n}"
-}
-
-###################################################
-# Method to regenerate access_token ( also updates in config ).
-# Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
-# Globals: 9 variables, 2 functions
-#   Variables - CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, TOKEN_URL, CONFIG, API_URL, API_VERSION, QUIET, NO_UPDATE_TOKEN
-#   Functions - _update_config and _print_center
-# Result: Update access_token and expiry else print error
-###################################################
-_get_access_token_and_update() {
-    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
-    if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
-        ACCESS_TOKEN_EXPIRY="$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))"
-        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
-    else
-        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
-        printf "%s\n" "${RESPONSE}" 1>&2
-        return 1
-    fi
-    return 0
 }
 
 ###################################################
@@ -875,7 +1363,7 @@ _upload_file_main() {
 _upload_folder() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
-    unset SUCCESS_STATUS SUCCESS_FILES ERROR_STATUS ERROR_FILES
+    SUCCESS_STATUS=0 SUCCESS_FILES="" ERROR_STATUS=0 ERROR_FILES=""
     case "${mode_upload_folder}" in
         normal)
             [ "${PARSE_MODE}" = parse ] && _clear_line 1 && _newline "\n"
@@ -900,7 +1388,7 @@ EOF
             [ -f "${TMPFILE}"ERROR ] && rm "${TMPFILE}"ERROR
 
             # shellcheck disable=SC2016
-            (printf "%s\n" "${files_upload_folder}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} sh -c '
+            (printf "%s\n" "${files_upload_folder}" | xargs -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I "{}" -n 1 sh -c '
             eval "${SOURCE_UTILS}"
             _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
             ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR) &
@@ -935,6 +1423,11 @@ Usage:\n ${0##*/} [options.. ] <filename> <foldername>\n
 Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive.\n
 File name argument is optional if create directory option is used.\n
 Options:\n
+  -a | --account 'account name' - Use different account than the default one.\n
+      To change the default account name, use this format, -a/--account default=account_name\n
+  -la | --list-accounts - Print all configured accounts in the config files.\n
+  -ca | --create-account 'account name' - To create a new account with the given name if does not already exists.\n
+  -da | --delete-account 'account name' - To delete an account information from config file. \n
   -c | -C | --create-dir <foldername> - option to create directory. Will provide folder id. Can be used to provide input folder, see README.\n
   -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.
       If you want to change the default value, then use this format, -r/--root-dir default=root_folder_id/root_folder_url\n
@@ -1037,24 +1530,25 @@ _setup_arguments() {
     [ $# = 0 ] && printf "Missing arguments\n" && return 1
     # Internal variables
     # De-initialize if any variables set already.
-    unset FOLDERNAME FINAL_LOCAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY
+    unset LIST_ACCOUNTS UPDATE_DEFAULT_ACCOUNT CUSTOM_ACCOUNT_NAME NEW_ACCOUNT_NAME DELETE_ACCOUNT_NAME ACCOUNT_ONLY_RUN
+    unset FOLDERNAME FINAL_LOCAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY CONTINUE_WITH_NO_INPUT
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
-    CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
+    export CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
     [ -f "${CONFIG_INFO}" ] && . "${CONFIG_INFO}"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
     # Configuration variables # Remote gDrive variables
     unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
-    API_URL="https://www.googleapis.com"
-    API_VERSION="v3"
-    SCOPE="${API_URL}/auth/drive"
-    REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
-    TOKEN_URL="https://accounts.google.com/o/oauth2/token"
+    export API_URL="https://www.googleapis.com"
+    export API_VERSION="v3" \
+        SCOPE="${API_URL}/auth/drive" \
+        REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob" \
+        TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
     _check_config() {
-        [ -z "${1##default=*}" ] && UPDATE_DEFAULT_CONFIG="_update_config"
+        [ -z "${1##default=*}" ] && export UPDATE_DEFAULT_CONFIG="_update_config"
         { [ -r "${2}" ] && CONFIG="${2}"; } || {
             printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
         }
@@ -1073,6 +1567,21 @@ _setup_arguments() {
             -h | --help) _usage ;;
             -D | --debug) DEBUG="true" && export DEBUG ;;
             --info) _version_info ;;
+            -a | --account)
+                _check_longoptions "${1}" "${2}"
+                export CUSTOM_ACCOUNT_NAME="${2##default=}" && shift
+                [ -z "${2##default=*}" ] && export UPDATE_DEFAULT_ACCOUNT="_update_config"
+                ;;
+            -la | --list-accounts) export LIST_ACCOUNTS="true" ;;
+            # this flag is preferred over --account
+            -ca | --create-account)
+                _check_longoptions "${1}" "${2}"
+                export NEW_ACCOUNT_NAME="${2}" && shift
+                ;;
+            -da | --delete-account)
+                _check_longoptions "${1}" "${2}"
+                export DELETE_ACCOUNT_NAME="${2}" && shift
+                ;;
             -c | -C | --create-dir)
                 _check_longoptions "${1}" "${2}"
                 FOLDERNAME="${2}" && shift
@@ -1080,7 +1589,7 @@ _setup_arguments() {
             -r | --root-dir)
                 _check_longoptions "${1}" "${2}"
                 ROOTDIR="${2##default=}"
-                [ -z "${2##default=*}" ] && UPDATE_DEFAULT_ROOTDIR="_update_config"
+                [ -z "${2##default=*}" ] && export UPDATE_DEFAULT_ROOTDIR="_update_config"
                 shift
                 ;;
             -z | --config)
@@ -1090,9 +1599,9 @@ _setup_arguments() {
                 ;;
             -i | --save-info)
                 _check_longoptions "${1}" "${2}"
-                LOG_FILE_ID="${2}" && shift
+                export LOG_FILE_ID="${2}" && shift
                 ;;
-            -s | --skip-subdirs) SKIP_SUBDIRS="true" ;;
+            -s | --skip-subdirs) export SKIP_SUBDIRS="true" ;;
             -p | --parallel)
                 _check_longoptions "${1}" "${2}"
                 NO_OF_PARALLEL_JOBS="${2}"
@@ -1102,10 +1611,10 @@ _setup_arguments() {
                     printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
                     exit 1
                 fi
-                PARALLEL_UPLOAD="parallel" && shift
+                export PARALLEL_UPLOAD="parallel" && shift
                 ;;
-            -o | --overwrite) OVERWRITE="Overwrite" && UPLOAD_MODE="update" ;;
-            -d | --skip-duplicates) SKIP_DUPLICATES="Skip Existing" && UPLOAD_MODE="update" ;;
+            -o | --overwrite) export OVERWRITE="Overwrite" UPLOAD_MODE="update" ;;
+            -d | --skip-duplicates) export SKIP_DUPLICATES="Skip Existing" UPLOAD_MODE="update" ;;
             -f | --file | --folder)
                 _check_longoptions "${1}" "${2}"
                 LOCAL_INPUT_ARRAY="${LOCAL_INPUT_ARRAY}
@@ -1127,12 +1636,13 @@ _setup_arguments() {
                         shift
                         ;;
                 esac
+                export SHARE_EMAIL
                 ;;
             --speed)
                 _check_longoptions "${1}" "${2}"
                 regex='^([0-9]+)([k,K]|[m,M]|[g,G])+$'
                 if printf "%s\n" "${2}" | grep -qE "${regex}"; then
-                    CURL_SPEED="--limit-rate ${2}" && shift
+                    export CURL_SPEED="--limit-rate ${2}" && shift
                 else
                     printf "Error: Wrong speed limit format, supported formats: 1K , 1M and 1G\n" 1>&2
                     exit 1
@@ -1141,7 +1651,7 @@ _setup_arguments() {
             -R | --retry)
                 _check_longoptions "${1}" "${2}"
                 if [ "$((2))" -gt 0 ] 2>| /dev/null 1>&2; then
-                    RETRY="${2}" && shift
+                    export RETRY="${2}" && shift
                 else
                     printf "Error: -R/--retry only takes positive integers as arguments, min = 1, max = infinity.\n"
                     exit 1
@@ -1156,10 +1666,10 @@ _setup_arguments() {
                 EXCLUDE_FILES="${EXCLUDE_FILES} ! -name '${2}' " && shift
                 ;;
             --hide) HIDE_INFO=":" ;;
-            -q | --quiet) QUIET="_print_center_quiet" ;;
-            -v | --verbose) VERBOSE="true" ;;
-            -V | --verbose-progress) VERBOSE_PROGRESS="true" ;;
-            --skip-internet-check) SKIP_INTERNET_CHECK=":" ;;
+            -q | --quiet) export QUIET="_print_center_quiet" ;;
+            -v | --verbose) export VERBOSE="true" ;;
+            -V | --verbose-progress) export VERBOSE_PROGRESS="true" ;;
+            --skip-internet-check) export SKIP_INTERNET_CHECK=":" ;;
             '') shorthelp ;;
             *) # Check if user meant it to be a flag
                 if [ -z "${1##-*}" ]; then
@@ -1193,8 +1703,18 @@ _setup_arguments() {
 
     _check_debug
 
-    [ -n "${VERBOSE_PROGRESS}" ] && unset VERBOSE && CURL_PROGRESS=""
-    [ -n "${QUIET}" ] && CURL_PROGRESS="-s"
+    [ -n "${VERBOSE_PROGRESS}" ] && unset VERBOSE && export CURL_PROGRESS=""
+    [ -n "${QUIET}" ] && export CURL_PROGRESS="-s"
+
+    # create info path folder, can be missing if gupload was not installed with install.sh
+    mkdir -p "${INFO_PATH}" || return 1
+
+    # handle account related flags here as we want to use the flags independenlty even with no normal valid inputs
+    # delete account, --delete-account flag
+    # TODO: add support for deleting multiple accounts
+    [ -n "${DELETE_ACCOUNT_NAME}" ] && _delete_account "${DELETE_ACCOUNT_NAME}"
+    # list all configured accounts, --list-accounts flag
+    [ -n "${LIST_ACCOUNTS}" ] && _all_accounts
 
     # If no input, then check if -C option was used or not.
     # check if given input exists ( file/folder )
@@ -1205,164 +1725,30 @@ _setup_arguments() {
         }
     done)"
 
-    [ -z "${FINAL_LOCAL_INPUT_ARRAY:-${FINAL_ID_INPUT_ARRAY:-${FOLDERNAME}}}" ] && _short_help
-
-    # create info path folder, can be missing if gupload was not installed with install.sh
-    mkdir -p "${INFO_PATH}"
-
-    return 0
-}
-
-###################################################
-# Check Oauth credentials and create/update config file
-# Client ID, Client Secret, Refesh Token and Access Token
-# Globals: 10 variables, 3 functions
-#   Variables - API_URL, API_VERSION, TOKEN URL,
-#               CONFIG, UPDATE_DEFAULT_CONFIG, INFO_PATH,
-#               CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN and ACCESS_TOKEN
-#   Functions - _update_config, _json_value and _print
-# Arguments: None
-# Result: read description
-###################################################
-_check_credentials() {
-    # Config file is created automatically after first run
-    [ -r "${CONFIG}" ] && . "${CONFIG}"
-    "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
-
-    ! [ -t 1 ] && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
-        printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
-        printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
+    # If no input, then check if either -C option was used.
+    [ -z "${FINAL_LOCAL_INPUT_ARRAY:-${FINAL_ID_INPUT_ARRAY:-${FOLDERNAME}}}" ] && {
+        # if any account related option was used then don't show short help
+        [ -z "${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-${NEW_ACCOUNT_NAME}}}" ] && _short_help
+        # exit right away if --list-accounts or --delete-account flag was used
+        [ -n "${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-}}" ] && exit 0
+        # don't exit right away when new account is created but also let the rootdir stuff execute
+        [ -n "${NEW_ACCOUNT_NAME}" ] && CONTINUE_WITH_NO_INPUT="true"
     }
-
-    # Following https://developers.google.com/identity/protocols/oauth2#size
-    CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
-    CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
-    REFRESH_TOKEN_REGEX='[0-9]//[0-9A-Za-z_-]+'     # 512 bytes
-    ACCESS_TOKEN_REGEX='ya29\.[0-9A-Za-z_-]+'       # 2048 bytes
-    AUTHORIZATION_CODE_REGEX='[0-9]/[0-9A-Za-z_-]+' # 256 bytes
-
-    until [ -n "${CLIENT_ID}" ] && [ -n "${CLIENT_ID_VALID}" ]; do
-        [ -n "${CLIENT_ID}" ] && {
-            if printf "%s\n" "${CLIENT_ID}" | grep -qE "${CLIENT_ID_REGEX}"; then
-                [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
-                CLIENT_ID_VALID="true" && continue
-            else
-                { [ -n "${client_id}" ] && message="- Try again"; } || message="in config ( ${CONFIG} )"
-                "${QUIET:-_print_center}" "normal" " Invalid Client ID ${message} " "-" && unset CLIENT_ID client_id
-            fi
-        }
-        [ -z "${client_id}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ID " "-"
-        [ -n "${client_id}" ] && _clear_line 1
-        printf -- "-> "
-        read -r CLIENT_ID && client_id=1
-    done
-
-    until [ -n "${CLIENT_SECRET}" ] && [ -n "${CLIENT_SECRET_VALID}" ]; do
-        [ -n "${CLIENT_SECRET}" ] && {
-            if printf "%s\n" "${CLIENT_SECRET}" | grep -qE "${CLIENT_SECRET_REGEX}"; then
-                [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
-                CLIENT_SECRET_VALID="true" && continue
-            else
-                { [ -n "${client_secret}" ] && message="- Try again"; } || message="in config ( ${CONFIG} )"
-                "${QUIET:-_print_center}" "normal" " Invalid Client Secret ${message} " "-" && unset CLIENT_SECRET client_secret
-            fi
-        }
-        [ -z "${client_secret}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client Secret " "-"
-        [ -n "${client_secret}" ] && _clear_line 1
-        printf -- "-> "
-        read -r CLIENT_SECRET && client_secret=1
-    done
-
-    [ -n "${REFRESH_TOKEN}" ] && {
-        ! printf "%s\n" "${REFRESH_TOKEN}" | grep -qE "${REFRESH_TOKEN_REGEX}" &&
-            "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-" && unset REFRESH_TOKEN
-    }
-
-    [ -z "${REFRESH_TOKEN}" ] && {
-        printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
-        printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
-        read -r REFRESH_TOKEN
-        if [ -n "${REFRESH_TOKEN}" ]; then
-            "${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
-            if ! printf "%s\n" "${REFRESH_TOKEN}" | grep -qE "${REFRESH_TOKEN_REGEX}"; then
-                { _get_access_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || check_error=1
-            else
-                check_error=true
-            fi
-            [ -n "${check_error}" ] && "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-" && unset REFRESH_TOKEN
-        else
-            "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"
-        fi
-
-        [ -z "${REFRESH_TOKEN}" ] && {
-            printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
-            URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
-            printf "\n%s\n" "${URL}"
-            until [ -n "${AUTHORIZATION_CODE}" ] && [ -n "${AUTHORIZATION_CODE_VALID}" ]; do
-                [ -n "${AUTHORIZATION_CODE}" ] && {
-                    if printf "%s\n" "${AUTHORIZATION_CODE}" | grep -qE "${AUTHORIZATION_CODE_REGEX}"; then
-                        AUTHORIZATION_CODE_VALID="true" && continue
-                    else
-                        "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
-                    fi
-                }
-                { [ -z "${authorization_code}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
-                printf -- "-> "
-                read -r AUTHORIZATION_CODE && authorization_code=1
-            done
-            RESPONSE="$(curl --compressed "${CURL_PROGRESS}" -X POST \
-                --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
-            _clear_line 1 1>&2
-
-            REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1 || :)"
-            { _get_access_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
-        }
-        printf "\n"
-    }
-
-    { [ -z "${ACCESS_TOKEN}" ] || ! printf "%s\n" "${ACCESS_TOKEN}" | grep -qE "${ACCESS_TOKEN_REGEX}" || [ "${ACCESS_TOKEN_EXPIRY:-0}" -lt "$(date +'%s')" ]; } &&
-        { _get_access_token_and_update || return 1; }
-    printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
-
-    # launch a background service to check access token and update it
-    # checks ACCESS_TOKEN_EXPIRY, try to update before 5 mins of expiry, a fresh token gets 60 mins
-    # process will be killed when script exits or "${MAIN_PID}" is killed
-    {
-        until ! kill -0 "${MAIN_PID}" 2>| /dev/null 1>&2; do
-            . "${TMPFILE}_ACCESS_TOKEN"
-            CURRENT_TIME="$(date +'%s')"
-            REMAINING_TOKEN_TIME="$((CURRENT_TIME - ACCESS_TOKEN_EXPIRY))"
-            if [ "${REMAINING_TOKEN_TIME}" -le 300 ]; then
-                # timeout after 30 seconds, it shouldn't take too long anyway, and update tmp config
-                CONFIG="${TMPFILE}_ACCESS_TOKEN" _timeout 30 _get_access_token_and_update || :
-            else
-                TOKEN_PROCESS_TIME_TO_SLEEP="$(if [ "${REMAINING_TOKEN_TIME}" -le 301 ]; then
-                    printf "0\n"
-                else
-                    printf "%s\n" "$((REMAINING_TOKEN_TIME - 300))"
-                fi)"
-                sleep "${TOKEN_PROCESS_TIME_TO_SLEEP}"
-            fi
-            sleep 1
-        done
-    } &
-    ACCESS_TOKEN_SERVICE_PID="${!}"
 
     return 0
 }
 
 ###################################################
 # Setup root directory where all file/folders will be uploaded/updated
-# Globals: 5 variables, 5 functions
+# Globals: 5 variables, 6 functions
 #   Variables - ROOTDIR, ROOT_FOLDER, UPDATE_DEFAULT_ROOTDIR, CONFIG, QUIET
-#   Functions - _print, _drive_info, _extract_id, _update_config, _json_value
-# Arguments: 1
-#   ${1}" = Positive integer ( amount of time in seconds to sleep )
+#   Functions - _print_center, _drive_info, _extract_id, _update_config, _json_value, _set_value
+# Arguments: None
 # Result: read description
-#   If root id not found then pribt message and exit
+#   If root id not found then print message and exit
 #   Update config with root id and root id name if specified
 # Reference:
-#   https://github.com/dylanaraps/pure-sh-bible#use-read-as-an-alternative-to-the-sleep-command
+#   https://github.com/dylanaraps/pure-bash-bible#use-read-as-an-alternative-to-the-sleep-command
 ###################################################
 _setup_root_dir() {
     _check_root_id() {
@@ -1377,14 +1763,17 @@ _setup_root_dir() {
         fi
 
         ROOT_FOLDER="${rootid_setup_root_dir}"
-        "${1:-:}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
+        "${1:-:}" "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER" "${ROOT_FOLDER}" "${CONFIG}" || return 1
         return 0
     }
     _check_root_id_name() {
         ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" | _json_value name 1 1 || :)"
-        "${1:-:}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
+        "${1:-:}" "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER_NAME" "${ROOT_FOLDER_NAME}" "${CONFIG}" || return 1
         return 0
     }
+
+    _set_value indirect ROOT_FOLDER "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER"
+    _set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER_NAME"
 
     if [ -n "${ROOTDIR:-}" ]; then
         ROOT_FOLDER="${ROOTDIR}" && { _check_root_id "${UPDATE_DEFAULT_ROOTDIR}" || return 1; } && unset ROOT_FOLDER_NAME
@@ -1392,14 +1781,14 @@ _setup_root_dir() {
         { [ -t 1 ] && "${QUIET:-_print_center}" "normal" "Enter root folder ID or URL, press enter for default ( root )" " " && printf -- "-> " &&
             read -r ROOT_FOLDER && [ -n "${ROOT_FOLDER}" ] && { _check_root_id _update_config || return 1; }; } || {
             ROOT_FOLDER="root"
-            _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
+            _update_config "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER" "${ROOT_FOLDER}" "${CONFIG}" || return 1
         } && printf "\n\n"
     elif [ -z "${ROOT_FOLDER_NAME}" ]; then
-        _check_root_id_name _update_config # update default root folder name if not available
+        _check_root_id_name _update_config || return 1 # update default root folder name if not available
     fi
 
     # fetch root folder name if rootdir different than default
-    [ -z "${ROOT_FOLDER_NAME}" ] && _check_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
+    [ -z "${ROOT_FOLDER_NAME}" ] && { _check_root_id_name "${UPDATE_DEFAULT_ROOTDIR}" || return 1; }
 
     return 0
 }
@@ -1443,10 +1832,7 @@ _setup_workspace() {
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
 _process_arguments() {
-    export API_URL API_VERSION TOKEN_URL ACCESS_TOKEN \
-        LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY SOURCE_UTILS UTILS_FOLDER TMPFILE \
-        QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG PARALLEL_UPLOAD
-
+    export SOURCE_UTILS
     # on successful uploads
     _share_and_print_link() {
         "${SHARE:-:}" "${1:-}" "${SHARE_EMAIL}"
@@ -1475,8 +1861,8 @@ _process_arguments() {
                 for _ in 1 2; do _clear_line 1; done && continue
             fi
         elif [ -d "${input}" ]; then
-            input="$(cd "${input}" && pwd)" # to handle dirname when current directory (.) is given as input.
-            unset EMPTY                     # Used when input folder is empty
+            input="$(cd "${input}" && pwd)" || return 1 # to handle dirname when current directory (.) is given as input.
+            unset EMPTY                                 # Used when input folder is empty
 
             _print_center "justify" "Given Input" ": FOLDER" "-"
             _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
@@ -1496,8 +1882,6 @@ _process_arguments() {
             "${EXTRA_LOG}" "justify" "Indexing files.." "-"
             FILENAMES="$(_tmp='find "'${input}'" -type f -name "*" '${INCLUDE_FILES}' '${EXCLUDE_FILES}'' && eval "${_tmp}")"
             _clear_line 1
-
-            ERROR_STATUS=0 SUCCESS_STATUS=0
 
             # Skip the sub folders and find recursively all the files and upload them.
             if [ -n "${SKIP_SUBDIRS}" ]; then
@@ -1637,31 +2021,35 @@ main() {
     [ $# = 0 ] && _short_help
 
     if [ -z "${SELF_SOURCE}" ]; then
-        UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}" && SOURCE_UTILS=". '${UTILS_FOLDER}/common-utils.sh' && . '${UTILS_FOLDER}/drive-utils.sh' && . '${UTILS_FOLDER}/upload-utils.sh'"
-        eval "${SOURCE_UTILS}" || { printf "Error: Unable to source util files.\n" && exit 1; }
+        export UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
+        export SOURCE_UTILS='. '${UTILS_FOLDER}/auth-utils.sh' && . '${UTILS_FOLDER}/common-utils.sh' && . '${UTILS_FOLDER}/drive-utils.sh' && . '${UTILS_FOLDER}/upload-utils.sh''
     else
-        SOURCE_UTILS="SOURCED_GUPLOAD=true . \"$(cd "$(_dirname "${0}")" && pwd)/${0##*\/}\"" && eval "${SOURCE_UTILS}"
+        SCRIPT_PATH="$(cd "$(_dirname "${0}")" && pwd)/${0##*\/}" && export SCRIPT_PATH
+        export SOURCE_UTILS='SOURCED_GUPLOAD=true . '${SCRIPT_PATH}''
     fi
+    eval "${SOURCE_UTILS}" || { printf "Error: Unable to source util files.\n" && exit 1; }
 
     set -o errexit -o noclobber
 
-    _setup_arguments "${@}"
-    "${SKIP_INTERNET_CHECK:-_check_internet}"
+    _setup_arguments "${@}" || exit 1
+    "${SKIP_INTERNET_CHECK:-_check_internet}" || exit 1
 
-    { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="$(pwd)/.$(_t="$(date +'%s')" && printf "%s\n" "$((_t * _t))").LOG"
+    { { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } ||
+        TMPFILE="$(pwd)/.$(_t="$(date +'%s')" && printf "%s\n" "$((_t * _t))").LOG"; } || exit 1
+    export TMPFILE
 
     _cleanup() {
         # unhide the cursor if hidden
-        [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\e[?25h"
+        [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\e[?25h\e[?7h"
         {
             # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
             [ -f "${TMPFILE}_ACCESS_TOKEN" ] && {
                 . "${TMPFILE}_ACCESS_TOKEN"
                 [ "${INITIAL_ACCESS_TOKEN}" = "${ACCESS_TOKEN}" ] || {
-                    _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-                    _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+                    _update_config "ACCOUNT_${ACCOUNT_NAME}_ACCESS_TOKEN" "${ACCESS_TOKEN}" "${CONFIG}"
+                    _update_config "ACCOUNT_${ACCOUNT_NAME}_ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
                 }
-            } 1>| /dev/null
+            } || : 1>| /dev/null
 
             # grab all chidren processes of access token service
             # https://askubuntu.com/a/512872
@@ -1669,7 +2057,7 @@ main() {
                 token_service_pids="$(ps --ppid="${ACCESS_TOKEN_SERVICE_PID}" -o pid=)"
                 # first kill parent id, then children processes
                 kill "${ACCESS_TOKEN_SERVICE_PID}"
-            } 1>| /dev/null
+            } || : 1>| /dev/null
 
             # grab all script children pids
             script_children_pids="$(ps --ppid="${MAIN_PID}" -o pid=)"
@@ -1697,17 +2085,19 @@ main() {
     export MAIN_PID="$$"
 
     START="$(date +'%s')"
-    "${EXTRA_LOG}" "justify" "Starting script" "-"
 
     "${EXTRA_LOG}" "justify" "Checking credentials.." "-"
-    { _check_credentials && for _ in 1 2; do _clear_line 1; done; } ||
+    { _check_credentials && _clear_line 1; } ||
         { "${QUIET:-_print_center}" "normal" "[ Error: Credentials checking failed ]" "=" && exit 1; }
-    _print_center "justify" "Required credentials available." "="
+    "${QUIET:-_print_center}" "normal" " Account: ${ACCOUNT_NAME} " "="
 
-    "${EXTRA_LOG}" "justify" "Checking root dir and workspace folder.." "-"
-    { _setup_root_dir && for _ in 1 2; do _clear_line 1; done; } ||
+    "${EXTRA_LOG}" "justify" "Checking root dir.." "-"
+    { _setup_root_dir && _clear_line 1; } ||
         { "${QUIET:-_print_center}" "normal" "[ Error: Rootdir setup failed ]" "=" && exit 1; }
     _print_center "justify" "Root dir properly configured." "="
+
+    # only execute next blocks if there was some input
+    [ -n "${CONTINUE_WITH_NO_INPUT}" ] && exit 0
 
     "${EXTRA_LOG}" "justify" "Checking Workspace Folder.." "-"
     { _setup_workspace && for _ in 1 2; do _clear_line 1; done; } ||

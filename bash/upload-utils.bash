@@ -121,7 +121,7 @@ _upload_file_main() {
 _upload_folder() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare mode="${1}" files="${3}" && PARSE_MODE="${2}" ID="${4:-}" && export PARSE_MODE ID
-    unset SUCCESS_STATUS SUCCESS_FILES ERROR_STATUS ERROR_FILES
+    SUCCESS_STATUS=0 SUCCESS_FILES="" ERROR_STATUS=0 ERROR_FILES=""
     case "${mode}" in
         normal)
             [[ ${PARSE_MODE} = parse ]] && _clear_line 1 && _newline "\n"
@@ -144,7 +144,7 @@ _upload_folder() {
             [[ -f "${TMPFILE}"ERROR ]] && rm "${TMPFILE}"ERROR
 
             # shellcheck disable=SC2016
-            printf "%s\n" "${files}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} bash -c '
+            printf "%s\n" "${files}" | xargs -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I "{}" -n 1 bash -c '
             _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
             ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
             pid="${!}"
@@ -167,3 +167,11 @@ _upload_folder() {
     esac
     return 0
 }
+
+ALL_FUNCTIONS=(_api_request
+    _collect_file_info
+    _error_logging_upload
+    _get_rootdir_id
+    _upload_file_main
+    _upload_folder)
+export -f "${ALL_FUNCTIONS[@]}"

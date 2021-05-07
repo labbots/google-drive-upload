@@ -37,7 +37,6 @@ _bytes_to_human() {
 #             Check QUIET, then check terminal size and enable print functions accordingly.
 ###################################################
 _check_debug() {
-    _print_center_quiet() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
     if [ -n "${DEBUG}" ]; then
         set -x && PS4='-> '
         _print_center() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
@@ -76,7 +75,7 @@ _check_internet() {
     if ! _timeout 10 curl -Is google.com --compressed; then
         _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
-        exit 1
+        return 1
     fi
     _clear_line 1
 }
@@ -255,6 +254,30 @@ _print_center() {
 }
 
 ###################################################
+# Quiet version of _print_center
+###################################################
+_print_center_quiet() {
+    { [ $# = 3 ] && printf "%s\n" "${2}"; } || printf "%s%s\n" "${2}" "${3}"
+}
+
+###################################################
+# Evaluates value1=value2
+# Globals: None
+# Arguments: 3
+#   ${1} = direct ( d ) or indirect ( i ) - ( evaluation mode )
+#   ${2} = var name
+#   ${3} = var value
+# Result: export value1=value2
+###################################################
+_set_value() {
+    mode_set_value="${1:?}" var_set_value="${2:?}" value_set_value="${3:?}"
+    case "${mode_set_value}" in
+        d | direct) export "${var_set_value}=${value_set_value}" ;;
+        i | indirect) export "${var_set_value}=$(eval printf "%s" \"\$"${value_set_value}"\")" ;;
+    esac
+}
+
+###################################################
 # Check if script terminal supports ansi escapes
 # Globals: 1 variable
 #   TERM
@@ -307,10 +330,11 @@ _update_config() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     value_name_update_config="${1}" value_update_config="${2}" config_path_update_config="${3}"
     ! [ -f "${config_path_update_config}" ] && : >| "${config_path_update_config}" # If config file doesn't exist.
-    chmod u+w "${config_path_update_config}"
+    chmod u+w "${config_path_update_config}" || return 1
     printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name_update_config}=" "${config_path_update_config}" || :)" \
-        "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}"
-    chmod a-w-r-x,u+r "${config_path_update_config}"
+        "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}" || return 1
+    chmod a-w-r-x,u+r "${config_path_update_config}" || return 1
+    return 0
 }
 
 ###################################################

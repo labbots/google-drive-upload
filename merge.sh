@@ -15,7 +15,10 @@ _merge() (
             sed -n 1p "${file}.${shell}"
             printf "%s\n" "SELF_SOURCE=\"true\""
             sed 1d common-utils."${shell}"
-            [ "${file}" = upload ] && sed 1d drive-utils."${shell}" && sed 1d upload-utils."${shell}"
+            [ "${file}" = upload ] &&
+                sed 1d auth-utils."${shell}" &&
+                sed 1d drive-utils."${shell}" &&
+                sed 1d upload-utils."${shell}"
             sed 1d "${file}.${shell}"
         } >| "release/g${file}"
         chmod +x "release/g${file}"

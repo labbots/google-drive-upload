@@ -121,7 +121,7 @@ _upload_file_main() {
 _upload_folder() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
-    unset SUCCESS_STATUS SUCCESS_FILES ERROR_STATUS ERROR_FILES
+    SUCCESS_STATUS=0 SUCCESS_FILES="" ERROR_STATUS=0 ERROR_FILES=""
     case "${mode_upload_folder}" in
         normal)
             [ "${PARSE_MODE}" = parse ] && _clear_line 1 && _newline "\n"
@@ -146,7 +146,7 @@ EOF
             [ -f "${TMPFILE}"ERROR ] && rm "${TMPFILE}"ERROR
 
             # shellcheck disable=SC2016
-            (printf "%s\n" "${files_upload_folder}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I {} sh -c '
+            (printf "%s\n" "${files_upload_folder}" | xargs -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I "{}" -n 1 sh -c '
             eval "${SOURCE_UTILS}"
             _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
             ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR) &

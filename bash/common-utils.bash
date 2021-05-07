@@ -44,7 +44,6 @@ _check_bash_version() {
 #             Check QUIET, then check terminal size and enable print functions accordingly.
 ###################################################
 _check_debug() {
-    _print_center_quiet() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
     if [[ -n ${DEBUG} ]]; then
         set -x && PS4='-> '
         _print_center() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
@@ -70,6 +69,7 @@ _check_debug() {
         fi
         set +x
     fi
+    export -f _print_center _clear_line _newline
 }
 
 ###################################################
@@ -87,7 +87,7 @@ _check_internet() {
     if ! _timeout 10 curl -Is google.com; then
         _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
-        exit 1
+        return 1
     fi
     _clear_line 1
 }
@@ -273,6 +273,30 @@ _print_center() {
 }
 
 ###################################################
+# Quiet version of _print_center
+###################################################
+_print_center_quiet() {
+    { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || printf "%s%s\n" "${2}" "${3}"
+}
+
+###################################################
+# Evaluates value1=value2
+# Globals: None
+# Arguments: 3
+#   ${1} = direct ( d ) or indirect ( i ) - ( evaluation mode )
+#   ${2} = var name
+#   ${3} = var value
+# Result: export value1=value2
+###################################################
+_set_value() {
+    declare mode="${1:?}" var="${2:?}" value="${3:?}"
+    case "${mode}" in
+        d | direct) export "${var}=${value}" ;;
+        i | indirect) export "${var}=${!value}" ;;
+    esac
+}
+
+###################################################
 # Check if script terminal supports ansi escapes
 # Globals: 1 variable
 #   TERM
@@ -321,10 +345,11 @@ _update_config() {
     [[ $# -lt 3 ]] && printf "Missing arguments\n" && return 1
     declare value_name="${1}" value="${2}" config_path="${3}"
     ! [ -f "${config_path}" ] && : >| "${config_path}" # If config file doesn't exist.
-    chmod u+w "${config_path}"
+    chmod u+w "${config_path}" || return 1
     printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name}=" "${config_path}" || :)" \
-        "${value_name}=\"${value}\"" >| "${config_path}"
-    chmod a-w-r-x,u+r "${config_path}"
+        "${value_name}=\"${value}\"" >| "${config_path}" || return 1
+    chmod a-w-r-x,u+r "${config_path}" || return 1
+    return 0
 }
 
 ###################################################
@@ -351,3 +376,22 @@ _url_encode() {
     done 2>| /dev/null
     printf '\n'
 }
+
+ALL_FUNCTIONS=(_bytes_to_human
+    _check_bash_version
+    _check_debug
+    _check_internet
+    _clear_line
+    _count
+    _dirname
+    _display_time
+    _get_latest_sha
+    _json_value
+    _print_center
+    _print_center_quiet
+    _set_value
+    _support_ansi_escapes
+    _timeout
+    _update_config
+    _url_encode)
+export -f "${ALL_FUNCTIONS[@]}"

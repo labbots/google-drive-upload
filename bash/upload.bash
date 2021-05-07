@@ -9,6 +9,11 @@ Usage:\n ${0##*/} [options.. ] <filename> <foldername>\n
 Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive.\n
 File name argument is optional if create directory option is used.\n
 Options:\n
+  -a | --account 'account name' - Use different account than the default one.\n
+      To change the default account name, use this format, -a/--account default=account_name\n
+  -la | --list-accounts - Print all configured accounts in the config files.\n
+  -ca | --create-account 'account name' - To create a new account with the given name if does not already exists.\n
+  -da | --delete-account 'account name' - To delete an account information from config file. \n
   -c | -C | --create-dir <foldername> - option to create directory. Will provide folder id. Can be used to provide input folder, see README.\n
   -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.
       If you want to change the default value, then use this format, -r/--root-dir default=root_folder_id/root_folder_url\n
@@ -109,21 +114,22 @@ _setup_arguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     # Internal variables
     # De-initialize if any variables set already.
-    unset FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY
+    unset LIST_ACCOUNTS UPDATE_DEFAULT_ACCOUNT CUSTOM_ACCOUNT_NAME NEW_ACCOUNT_NAME DELETE_ACCOUNT_NAME ACCOUNT_ONLY_RUN
+    unset FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY CONTINUE_WITH_NO_INPUT
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
-    CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
+    export CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
     [[ -f ${CONFIG_INFO} ]] && . "${CONFIG_INFO}"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
     # Configuration variables # Remote gDrive variables
-    unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
-    API_URL="https://www.googleapis.com"
-    API_VERSION="v3"
-    SCOPE="${API_URL}/auth/drive"
-    REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
-    TOKEN_URL="https://accounts.google.com/o/oauth2/token"
+    unset ROOT_FOLDER ROOT_FOLDER_NAME CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
+    export API_URL="https://www.googleapis.com"
+    export API_VERSION="v3" \
+        SCOPE="${API_URL}/auth/drive" \
+        REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob" \
+        TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
     _check_config() {
         [[ ${1} = default* ]] && export UPDATE_DEFAULT_CONFIG="_update_config"
@@ -145,6 +151,21 @@ _setup_arguments() {
             -h | --help) _usage ;;
             -D | --debug) DEBUG="true" && export DEBUG ;;
             --info) _version_info ;;
+            -a | --account)
+                _check_longoptions "${1}" "${2}"
+                export CUSTOM_ACCOUNT_NAME="${2/default=/}" && shift
+                [[ ${2} = default* ]] && export UPDATE_DEFAULT_ACCOUNT="_update_config"
+                ;;
+            -la | --list-account) export LIST_ACCOUNTS="true" ;;
+            # this flag is preferred over --account
+            -ca | --create-account)
+                _check_longoptions "${1}" "${2}"
+                export NEW_ACCOUNT_NAME="${2}" && shift
+                ;;
+            -da | --delete-account)
+                _check_longoptions "${1}" "${2}"
+                export DELETE_ACCOUNT_NAME="${2}" && shift
+                ;;
             -c | -C | --create-dir)
                 _check_longoptions "${1}" "${2}"
                 FOLDERNAME="${2}" && shift
@@ -162,9 +183,9 @@ _setup_arguments() {
                 ;;
             -i | --save-info)
                 _check_longoptions "${1}" "${2}"
-                LOG_FILE_ID="${2}" && shift
+                export LOG_FILE_ID="${2}" && shift
                 ;;
-            -s | --skip-subdirs) SKIP_SUBDIRS="true" ;;
+            -s | --skip-subdirs) export SKIP_SUBDIRS="true" ;;
             -p | --parallel)
                 _check_longoptions "${1}" "${2}"
                 NO_OF_PARALLEL_JOBS="${2}"
@@ -174,10 +195,10 @@ _setup_arguments() {
                     printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
                     exit 1
                 fi
-                PARALLEL_UPLOAD="parallel" && shift
+                export PARALLEL_UPLOAD="parallel" && shift
                 ;;
-            -o | --overwrite) OVERWRITE="Overwrite" && UPLOAD_MODE="update" ;;
-            -d | --skip-duplicates) SKIP_DUPLICATES="Skip Existing" && UPLOAD_MODE="update" ;;
+            -o | --overwrite) export OVERWRITE="Overwrite" UPLOAD_MODE="update" ;;
+            -d | --skip-duplicates) export SKIP_DUPLICATES="Skip Existing" UPLOAD_MODE="update" ;;
             -f | --file | --folder)
                 _check_longoptions "${1}" "${2}"
                 LOCAL_INPUT_ARRAY+=("${2}") && shift
@@ -193,12 +214,13 @@ _setup_arguments() {
                     ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
                     shift
                 }
+                export SHARE_EMAIL
                 ;;
             --speed)
                 _check_longoptions "${1}" "${2}"
                 regex='^([0-9]+)([k,K]|[m,M]|[g,G])+$'
                 if [[ ${2} =~ ${regex} ]]; then
-                    CURL_SPEED="--limit-rate ${2}" && shift
+                    export CURL_SPEED="--limit-rate ${2}" && shift
                 else
                     printf "Error: Wrong speed limit format, supported formats: 1K , 1M and 1G\n" 1>&2
                     exit 1
@@ -207,7 +229,7 @@ _setup_arguments() {
             -R | --retry)
                 _check_longoptions "${1}" "${2}"
                 if [[ ${2} -gt 0 ]]; then
-                    RETRY="${2}" && shift
+                    export RETRY="${2}" && shift
                 else
                     printf "Error: -R/--retry only takes positive integers as arguments, min = 1, max = infinity.\n"
                     exit 1
@@ -222,9 +244,9 @@ _setup_arguments() {
                 EXCLUDE_FILES="${EXCLUDE_FILES} ! -name '${2}' " && shift
                 ;;
             --hide) HIDE_INFO=":" ;;
-            -q | --quiet) QUIET="_print_center_quiet" ;;
-            -v | --verbose) VERBOSE="true" ;;
-            -V | --verbose-progress) VERBOSE_PROGRESS="true" ;;
+            -q | --quiet) export QUIET="_print_center_quiet" ;;
+            -v | --verbose) export VERBOSE="true" ;;
+            -V | --verbose-progress) export VERBOSE_PROGRESS="true" ;;
             --skip-internet-check) SKIP_INTERNET_CHECK=":" ;;
             '') shorthelp ;;
             *) # Check if user meant it to be a flag
@@ -255,8 +277,11 @@ _setup_arguments() {
 
     _check_debug
 
-    [[ -n ${VERBOSE_PROGRESS} ]] && unset VERBOSE && CURL_PROGRESS=""
-    [[ -n ${QUIET} ]] && CURL_PROGRESS="-s"
+    [[ -n ${VERBOSE_PROGRESS} ]] && unset VERBOSE && export CURL_PROGRESS=""
+    [[ -n ${QUIET} ]] && export CURL_PROGRESS="-s"
+
+    # create info path folder, can be missing if gupload was not installed with install.sh
+    mkdir -p "${INFO_PATH}"
 
     unset Aseen && declare -A Aseen
     for input in "${LOCAL_INPUT_ARRAY[@]}"; do
@@ -267,162 +292,34 @@ _setup_arguments() {
         }
     done
 
-    # If no input, then check if -C option was used or not.
-    [[ -z ${FINAL_LOCAL_INPUT_ARRAY[*]:-${FINAL_ID_INPUT_ARRAY[*]:-${FOLDERNAME}}} ]] && _short_help
+    # handle account related flags here as we want to use the flags independenlty even with no normal valid inputs
+    # delete account, --delete-account flag
+    # TODO: add support for deleting multiple accounts
+    [[ -n ${DELETE_ACCOUNT_NAME} ]] && _delete_account "${DELETE_ACCOUNT_NAME}"
+    # list all configured accounts, --list-accounts flag
+    [[ -n ${LIST_ACCOUNTS} ]] && _all_accounts
 
-    # create info path folder, can be missing if gupload was not installed with install.sh
-    mkdir -p "${INFO_PATH}"
-
-    return 0
-}
-
-###################################################
-# Check Oauth credentials and create/update config file
-# Client ID, Client Secret, Refesh Token and Access Token
-# Globals: 10 variables, 3 functions
-#   Variables - API_URL, API_VERSION, TOKEN URL,
-#               CONFIG, UPDATE_DEFAULT_CONFIG, INFO_PATH,
-#               CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN and ACCESS_TOKEN
-#   Functions - _update_config, _update_value, _json_value and _print_center
-# Arguments: None
-# Result: read description
-###################################################
-_check_credentials() {
-    # Config file is created automatically after first run
-    [[ -r ${CONFIG} ]] && . "${CONFIG}"
-    "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
-
-    ! [[ -t 1 ]] && [[ -z ${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}} ]] && {
-        printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
-        printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
+    # If no input, then check if either -C option was used.
+    [[ -z ${FINAL_LOCAL_INPUT_ARRAY[*]:-${FINAL_ID_INPUT_ARRAY[*]:-${FOLDERNAME:-}}} ]] && {
+        # if any account related option was used then don't show short help
+        [[ -z ${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-${NEW_ACCOUNT_NAME}}} ]] && _short_help
+        # exit right away if --list-accounts or --delete-account flag was used
+        [[ -n ${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-}} ]] && exit 0
+        # don't exit right away when new account is created but also let the rootdir stuff execute
+        [[ -n ${NEW_ACCOUNT_NAME} ]] && CONTINUE_WITH_NO_INPUT="true"
     }
-
-    # Following https://developers.google.com/identity/protocols/oauth2#size
-    CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
-    CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
-    REFRESH_TOKEN_REGEX='[0-9]//[0-9A-Za-z_-]+'     # 512 bytes
-    ACCESS_TOKEN_REGEX='ya29\.[0-9A-Za-z_-]+'       # 2048 bytes
-    AUTHORIZATION_CODE_REGEX='[0-9]/[0-9A-Za-z_-]+' # 256 bytes
-
-    until [[ -n ${CLIENT_ID} && -n ${CLIENT_ID_VALID} ]]; do
-        [[ -n ${CLIENT_ID} ]] && {
-            if [[ ${CLIENT_ID} =~ ${CLIENT_ID_REGEX} ]]; then
-                [[ -n ${client_id} ]] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
-                CLIENT_ID_VALID="true" && continue
-            else
-                { [[ -n ${client_id} ]] && message="- Try again"; } || message="in config ( ${CONFIG} )"
-                "${QUIET:-_print_center}" "normal" " Invalid Client ID ${message} " "-" && unset CLIENT_ID client_id
-            fi
-        }
-        [[ -z ${client_id} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ID " "-"
-        [[ -n ${client_id} ]] && _clear_line 1
-        printf -- "-> "
-        read -r CLIENT_ID && client_id=1
-    done
-
-    until [[ -n ${CLIENT_SECRET} && -n ${CLIENT_SECRET_VALID} ]]; do
-        [[ -n ${CLIENT_SECRET} ]] && {
-            if [[ ${CLIENT_SECRET} =~ ${CLIENT_SECRET_REGEX} ]]; then
-                [[ -n ${client_secret} ]] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
-                CLIENT_SECRET_VALID="true" && continue
-            else
-                { [[ -n ${client_secret} ]] && message="- Try again"; } || message="in config ( ${CONFIG} )"
-                "${QUIET:-_print_center}" "normal" " Invalid Client Secret ${message} " "-" && unset CLIENT_SECRET client_secret
-            fi
-        }
-        [[ -z ${client_secret} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client Secret " "-"
-        [[ -n ${client_secret} ]] && _clear_line 1
-        printf -- "-> "
-        read -r CLIENT_SECRET && client_secret=1
-    done
-
-    [[ -n ${REFRESH_TOKEN} ]] && {
-        ! [[ ${REFRESH_TOKEN} =~ ${REFRESH_TOKEN_REGEX} ]] &&
-            "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-" && unset REFRESH_TOKEN
-    }
-
-    [[ -z ${REFRESH_TOKEN} ]] && {
-        printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
-        printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
-        read -r REFRESH_TOKEN
-        if [[ -n ${REFRESH_TOKEN} ]]; then
-            "${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
-            if [[ ${REFRESH_TOKEN} =~ ${REFRESH_TOKEN_REGEX} ]]; then
-                { _get_access_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || check_error=true
-            else
-                check_error=true
-            fi
-            [[ -n ${check_error} ]] && "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-" && unset REFRESH_TOKEN
-        else
-            "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"
-        fi
-
-        [[ -z ${REFRESH_TOKEN} ]] && {
-            printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
-            URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
-            printf "\n%s\n" "${URL}"
-            until [[ -n ${AUTHORIZATION_CODE} && -n ${AUTHORIZATION_CODE_VALID} ]]; do
-                [[ -n ${AUTHORIZATION_CODE} ]] && {
-                    if [[ ${AUTHORIZATION_CODE} =~ ${AUTHORIZATION_CODE_REGEX} ]]; then
-                        AUTHORIZATION_CODE_VALID="true" && continue
-                    else
-                        "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
-                    fi
-                }
-                { [[ -z ${authorization_code} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
-                printf -- "-> "
-                read -r AUTHORIZATION_CODE && authorization_code=1
-            done
-            RESPONSE="$(curl --compressed "${CURL_PROGRESS}" -X POST \
-                --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
-            _clear_line 1 1>&2
-
-            REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}" || :)"
-            { _get_access_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
-        }
-        printf "\n"
-    }
-
-    [[ -z ${ACCESS_TOKEN} || ${ACCESS_TOKEN_EXPIRY:-0} -lt "$(printf "%(%s)T\\n" "-1")" ]] || ! [[ ${ACCESS_TOKEN} =~ ${ACCESS_TOKEN_REGEX} ]] &&
-        { _get_access_token_and_update || return 1; }
-    printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
-
-    # launch a background service to check access token and update it
-    # checks ACCESS_TOKEN_EXPIRY, try to update before 5 mins of expiry, a fresh token gets 60 mins
-    # process will be killed when script exits or "${MAIN_PID}" is killed
-    {
-        until ! kill -0 "${MAIN_PID}" 2>| /dev/null 1>&2; do
-            . "${TMPFILE}_ACCESS_TOKEN"
-            CURRENT_TIME="$(printf "%(%s)T\\n" "-1")"
-            REMAINING_TOKEN_TIME="$((ACCESS_TOKEN_EXPIRY - CURRENT_TIME))"
-            if [[ ${REMAINING_TOKEN_TIME} -le 300 ]]; then
-                # timeout after 30 seconds, it shouldn't take too long anyway, and update tmp config
-                CONFIG="${TMPFILE}_ACCESS_TOKEN" _timeout 30 _get_access_token_and_update || :
-            else
-                TOKEN_PROCESS_TIME_TO_SLEEP="$(if [[ ${REMAINING_TOKEN_TIME} -le 301 ]]; then
-                    printf "0\n"
-                else
-                    printf "%s\n" "$((REMAINING_TOKEN_TIME - 300))"
-                fi)"
-                sleep "${TOKEN_PROCESS_TIME_TO_SLEEP}"
-            fi
-            sleep 1
-        done
-    } &
-    ACCESS_TOKEN_SERVICE_PID="${!}"
 
     return 0
 }
 
 ###################################################
 # Setup root directory where all file/folders will be uploaded/updated
-# Globals: 5 variables, 5 functions
+# Globals: 5 variables, 6 functions
 #   Variables - ROOTDIR, ROOT_FOLDER, UPDATE_DEFAULT_ROOTDIR, CONFIG, QUIET
-#   Functions - _print_center, _drive_info, _extract_id, _update_config, _json_value
-# Arguments: 1
-#   ${1} = Positive integer ( amount of time in seconds to sleep )
+#   Functions - _print_center, _drive_info, _extract_id, _update_config, _json_value, _set_value
+# Arguments: None
 # Result: read description
-#   If root id not found then pribt message and exit
+#   If root id not found then print message and exit
 #   Update config with root id and root id name if specified
 # Reference:
 #   https://github.com/dylanaraps/pure-bash-bible#use-read-as-an-alternative-to-the-sleep-command
@@ -438,14 +335,17 @@ _setup_root_dir() {
             return 1
         fi
         ROOT_FOLDER="${rootid}"
-        "${1:-:}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
+        "${1:-:}" "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER" "${ROOT_FOLDER}" "${CONFIG}" || return 1
         return 0
     }
     _check_root_id_name() {
         ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" | _json_value name || :)"
-        "${1:-:}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
+        "${1:-:}" "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER_NAME" "${ROOT_FOLDER_NAME}" "${CONFIG}" || return 1
         return 0
     }
+
+    _set_value indirect ROOT_FOLDER "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER"
+    _set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER_NAME"
 
     if [[ -n ${ROOTDIR:-} ]]; then
         ROOT_FOLDER="${ROOTDIR}" && { _check_root_id "${UPDATE_DEFAULT_ROOTDIR}" || return 1; } && unset ROOT_FOLDER_NAME
@@ -453,14 +353,14 @@ _setup_root_dir() {
         { [[ -t 1 ]] && "${QUIET:-_print_center}" "normal" "Enter root folder ID or URL, press enter for default ( root )" " " && printf -- "-> " &&
             read -r ROOT_FOLDER && [[ -n ${ROOT_FOLDER} ]] && { _check_root_id _update_config || return 1; }; } || {
             ROOT_FOLDER="root"
-            _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
+            _update_config "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER" "${ROOT_FOLDER}" "${CONFIG}" || return 1
         }
     elif [[ -z ${ROOT_FOLDER_NAME} ]]; then
-        _check_root_id_name _update_config # update default root folder name if not available
+        _check_root_id_name _update_config || return 1 # update default root folder name if not available
     fi
 
     # fetch root folder name if rootdir different than default
-    [[ -z ${ROOT_FOLDER_NAME} ]] && _check_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
+    [[ -z ${ROOT_FOLDER_NAME} ]] && { _check_root_id_name "${UPDATE_DEFAULT_ROOTDIR}" || return 1; }
 
     return 0
 }
@@ -504,14 +404,6 @@ _setup_workspace() {
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
 _process_arguments() {
-    export API_URL API_VERSION TOKEN_URL ACCESS_TOKEN \
-        LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY UTILS_FOLDER TMPFILE \
-        QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG PARALLEL_UPLOAD
-
-    export -f _bytes_to_human _dirname _json_value _url_encode _support_ansi_escapes _newline _print_center_quiet _print_center _clear_line \
-        _api_request _get_access_token_and_update _check_existing_file _upload_file _upload_file_main _clone_file _collect_file_info _generate_upload_link _upload_file_from_uri _full_upload \
-        _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _get_rootdir_id
-
     # on successful uploads
     _share_and_print_link() {
         "${SHARE:-:}" "${1:-}" "${SHARE_EMAIL}"
@@ -536,8 +428,8 @@ _process_arguments() {
                 for _ in 1 2; do _clear_line 1; done && continue
             fi
         elif [[ -d ${input} ]]; then
-            input="$(cd "${input}" && pwd)" # to handle _dirname when current directory (.) is given as input.
-            unset EMPTY                     # Used when input folder is empty
+            input="$(cd "${input}" && pwd)" || return 1 # to handle _dirname when current directory (.) is given as input.
+            unset EMPTY                                 # Used when input folder is empty
 
             _print_center "justify" "Given Input" ": FOLDER" "-"
             _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
@@ -557,8 +449,6 @@ _process_arguments() {
             "${EXTRA_LOG}" "justify" "Indexing files.." "-"
             mapfile -t FILENAMES <<< "$(_tmp='find "'${input}'" -type f -name "*" '${INCLUDE_FILES}' '${EXCLUDE_FILES}'' && eval "${_tmp}")"
             _clear_line 1
-
-            ERROR_STATUS=0 SUCCESS_STATUS=0
 
             # Skip the sub folders and find recursively all the files and upload them.
             if [[ -n ${SKIP_SUBDIRS} ]]; then
@@ -687,30 +577,32 @@ main() {
     [[ $# = 0 ]] && _short_help
 
     [[ -z ${SELF_SOURCE} ]] && {
-        UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
-        { . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash && . "${UTILS_FOLDER}"/upload-utils.bash; } ||
+        export UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
+        { . "${UTILS_FOLDER}"/auth-utils.bash && . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash && . "${UTILS_FOLDER}"/upload-utils.bash; } ||
             { printf "Error: Unable to source util files.\n" && exit 1; }
     }
 
     _check_bash_version && set -o errexit -o noclobber -o pipefail
 
-    _setup_arguments "${@}"
-    "${SKIP_INTERNET_CHECK:-_check_internet}"
+    _setup_arguments "${@}" || exit 1
+    "${SKIP_INTERNET_CHECK:-_check_internet}" || exit 1
 
-    { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/.$(_t="$(printf "%(%s)T\\n" "-1")" && printf "%s\n" "$((_t * _t))").LOG"
+    { { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } ||
+        TMPFILE="${PWD}/.$(_t="$(printf "%(%s)T\\n" "-1")" && printf "%s\n" "$((_t * _t))").LOG"; } || exit 1
+    export TMPFILE
 
     _cleanup() {
         # unhide the cursor if hidden
-        [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\e[?25h"
+        [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\e[?25h\e[?7h"
         {
             [[ -f ${TMPFILE}_ACCESS_TOKEN ]] && {
                 # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
                 . "${TMPFILE}_ACCESS_TOKEN"
                 [[ ${INITIAL_ACCESS_TOKEN} = "${ACCESS_TOKEN}" ]] || {
-                    _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-                    _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+                    _update_config "ACCOUNT_${ACCOUNT_NAME}_ACCESS_TOKEN" "${ACCESS_TOKEN}" "${CONFIG}"
+                    _update_config "ACCOUNT_${ACCOUNT_NAME}_ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
                 }
-            } 1>| /dev/null
+            } || : 1>| /dev/null
 
             # grab all chidren processes of access token service
             # https://askubuntu.com/a/512872
@@ -718,7 +610,7 @@ main() {
                 token_service_pids="$(ps --ppid="${ACCESS_TOKEN_SERVICE_PID}" -o pid=)"
                 # first kill parent id, then children processes
                 kill "${ACCESS_TOKEN_SERVICE_PID}"
-            } 1>| /dev/null
+            } || : 1>| /dev/null
 
             # grab all script children pids
             script_children_pids="$(ps --ppid="${MAIN_PID}" -o pid=)"
@@ -746,17 +638,19 @@ main() {
     export MAIN_PID="$$"
 
     START="$(printf "%(%s)T\\n" "-1")"
-    "${EXTRA_LOG}" "justify" "Starting script" "-"
 
     "${EXTRA_LOG}" "justify" "Checking credentials.." "-"
-    { _check_credentials && for _ in 1 2; do _clear_line 1; done; } ||
+    { _check_credentials && _clear_line 1; } ||
         { "${QUIET:-_print_center}" "normal" "[ Error: Credentials checking failed ]" "=" && exit 1; }
-    _print_center "justify" "Required credentials available." "="
+    "${QUIET:-_print_center}" "normal" " Account: ${ACCOUNT_NAME} " "="
 
-    "${EXTRA_LOG}" "justify" "Checking root dir and workspace folder.." "-"
-    { _setup_root_dir && for _ in 1 2; do _clear_line 1; done; } ||
+    "${EXTRA_LOG}" "justify" "Checking root dir.." "-"
+    { _setup_root_dir && _clear_line 1; } ||
         { "${QUIET:-_print_center}" "normal" "[ Error: Rootdir setup failed ]" "=" && exit 1; }
     _print_center "justify" "Root dir properly configured." "="
+
+    # only execute next blocks if there was some input
+    [[ -n ${CONTINUE_WITH_NO_INPUT} ]] && exit 0
 
     "${EXTRA_LOG}" "justify" "Checking Workspace Folder.." "-"
     { _setup_workspace && for _ in 1 2; do _clear_line 1; done; } ||

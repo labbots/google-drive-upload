@@ -178,28 +178,6 @@ _extract_id() {
 }
 
 ###################################################
-# Method to regenerate access_token ( also updates in config ).
-# Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
-# Globals: 9 variables, 2 functions
-#   Variables - CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, TOKEN_URL, CONFIG, API_URL, API_VERSION, QUIET, NO_UPDATE_TOKEN
-#   Functions - _update_config and _print_center
-# Result: Update access_token and expiry else print error
-###################################################
-_get_access_token_and_update() {
-    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
-    if ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"; then
-        ACCESS_TOKEN_EXPIRY="$(($(printf "%(%s)T\\n" "-1") + $(_json_value expires_in 1 1 <<< "${RESPONSE}") - 1))"
-        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
-    else
-        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
-        printf "%s\n" "${RESPONSE}" 1>&2
-        return 1
-    fi
-    return 0
-}
-
-###################################################
 # Upload ( Create/Update ) files on gdrive.
 # Interrupted uploads can be resumed.
 # Globals: 8 variables, 10 functions
@@ -418,3 +396,18 @@ _share_id() {
     { _json_value id 1 1 <<< "${share_response}" 2>| /dev/null 1>&2 && return 0; } ||
         { printf "%s\n" "Error: Cannot Share." 1>&2 && printf "%s\n" "${share_response}" 1>&2 && return 1; }
 }
+
+ALL_FUNCTIONS=(_check_existing_file
+    _clone_file
+    _create_directory
+    _drive_info
+    _extract_id
+    _upload_file
+    _generate_upload_link
+    _upload_file_from_uri
+    _normal_logging_upload
+    _log_upload_session
+    _remove_upload_session
+    _full_upload
+    _share_id)
+export -f "${ALL_FUNCTIONS[@]}"
