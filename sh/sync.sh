@@ -574,6 +574,7 @@ _process_arguments() {
         ! [ -d "${INPUT}" ] && printf "\nError: Invalid Input ( %s ), no such directory.\n" "${INPUT}" && continue
         current_folder_process_arguments="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
+        [ -n "${DEFAULT_ACCOUNT}" ] && _set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${DEFAULT_ACCOUNT}_ROOT_FOLDER_NAME"
         GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME:-Unknown}}"
 
         [ -n "${CREATE_SERVICE}" ] && {
