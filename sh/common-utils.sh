@@ -169,6 +169,30 @@ _get_latest_sha() {
 }
 
 ###################################################
+# Encode the given string to parse properly as json
+# Globals: None
+# Arguments: 1
+#   ${1} = string
+# Result: print encoded string
+# Reference:
+#   https://tools.ietf.org/html/rfc7159#section-7
+###################################################
+_json_escape() {
+    input_json_escape="${1:?Provide Input}" output_json_escape=""
+    output_json_escape="$(printf "%s" "${input_json_escape}" | sed \
+        -e "s|'\'|'\\'|g" \
+        -e "s|'/'|'\/'|g" \
+        -e "s|'|\'|g" \
+        -e 's/\"/\\\"/g' \
+        -e ':a; $!N' \
+        -e 's|\t|\\t|g' \
+        -e 's|\r|\\r|g' \
+        -e 's|\f|\\f|g' | awk -v ORS='\\n' '1')"
+    # use awk because sed just messes up with newlines
+    printf "%s" "${output_json_escape}"
+}
+
+###################################################
 # Method to extract specified field data from json
 # Globals: None
 # Arguments: 2

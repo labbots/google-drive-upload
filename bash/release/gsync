@@ -191,6 +191,30 @@ _get_latest_sha() {
 }
 
 ###################################################
+# Encode the given string to parse properly as json
+# Globals: None
+# Arguments: 1
+#   ${1} = string
+# Result: print encoded string
+# Reference:
+#   https://tools.ietf.org/html/rfc7159#section-7
+###################################################
+_json_escape() {
+    declare input="${1:?Provide Input}"
+    # \ and /
+    : "${input//\\/\\\\}"
+    : "${_//\//\\\/}"
+    : "${_//\'/\\\'}"    # ' (not strictly needed ?)
+    : "${_//\"/\\\"}"    # "
+    : "${_//$'\t'/\\\t}" # \t (tab)
+    : "${_//$'\n'/\\\n}" # \n (newline)
+    : "${_//$'\r'/\\\r}" # \r (carriage return)
+    : "${_//$'\f'/\\\f}" # \f (form feed)
+    : "${_//$'\b'/\\\b}" # \b (backspace)
+    printf "%s" "${_}"
+}
+
+###################################################
 # Method to extract specified field data from json
 # Globals: None
 # Arguments: 2
@@ -387,6 +411,7 @@ ALL_FUNCTIONS=(_bytes_to_human
     _dirname
     _display_time
     _get_latest_sha
+    _json_escape
     _json_value
     _print_center
     _print_center_quiet

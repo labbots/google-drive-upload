@@ -22,6 +22,10 @@ Options:\n
   -f | --[file|folder] - Specify files and folders explicitly in one command, use multiple times for multiple folder/files. See README for more use of this command.\n
   -cl | --clone - Upload a gdrive file without downloading, require accessible gdrive link or id as argument.\n
   -o | --overwrite - Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders.\n
+  -desc | --description | --description-all - Specify description for the given file. To use the respective metadata of a file, below is the format:\n
+         File name ( fullname ): %f | Size: %s | Mime Type: %m\n
+         Now to actually use it: --description 'Filename: %f, Size: %s, Mime: %m'\n
+         Note: For files inside folders, use --description-all flag.\n
   -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
   --speed 'speed' - Limit the download speed, supported formats: 1K, 1M and 1G.\n
@@ -116,7 +120,7 @@ _setup_arguments() {
     # De-initialize if any variables set already.
     unset LIST_ACCOUNTS UPDATE_DEFAULT_ACCOUNT CUSTOM_ACCOUNT_NAME NEW_ACCOUNT_NAME DELETE_ACCOUNT_NAME ACCOUNT_ONLY_RUN
     unset FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY CONTINUE_WITH_NO_INPUT
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES DESCRIPTION SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
     export CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
@@ -199,6 +203,11 @@ _setup_arguments() {
                 ;;
             -o | --overwrite) export OVERWRITE="Overwrite" UPLOAD_MODE="update" ;;
             -d | --skip-duplicates) export SKIP_DUPLICATES="Skip Existing" UPLOAD_MODE="update" ;;
+            -desc | --description | --description-all)
+                _check_longoptions "${1}" "${2}"
+                [[ ${1} = "--description-all" ]] && export DESCRIPTION_ALL="true"
+                export DESCRIPTION="${2}" && shift
+                ;;
             -f | --file | --folder)
                 _check_longoptions "${1}" "${2}"
                 LOCAL_INPUT_ARRAY+=("${2}") && shift
@@ -416,6 +425,9 @@ _process_arguments() {
     for input in "${FINAL_LOCAL_INPUT_ARRAY[@]}"; do
         # Check if the argument is a file or a directory.
         if [[ -f ${input} ]]; then
+            # export DESCRIPTION_FILE, used for descriptions in _upload_file function
+            export DESCRIPTION_FILE="${DESCRIPTION}"
+
             _print_center "justify" "Given Input" ": FILE" "="
             _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
             _upload_file_main noparse "${input}" "${WORKSPACE_FOLDER_ID}"
@@ -428,6 +440,9 @@ _process_arguments() {
         elif [[ -d ${input} ]]; then
             input="$(cd "${input}" && pwd)" || return 1 # to handle _dirname when current directory (.) is given as input.
             unset EMPTY                                 # Used when input folder is empty
+
+            # export DESCRIPTION_FILE only if DESCRIPTION_ALL var is available, used for descriptions in _upload_file function
+            export DESCRIPTION_FILE="${DESCRIPTION_ALL:+${DESCRIPTION}}"
 
             _print_center "justify" "Given Input" ": FOLDER" "-"
             _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
@@ -552,9 +567,15 @@ _process_arguments() {
             size="$(_json_value size 1 1 <<< "${json}" || :)"
             for _ in 1 2; do _clear_line 1; done
             if [[ ${type} =~ folder ]]; then
+                # export DESCRIPTION_FILE only if DESCRIPTION_ALL var is available, used for descriptions in _clone_file function
+                export DESCRIPTION_FILE="${DESCRIPTION_ALL+:${DESCRIPTION}}"
+
                 "${QUIET:-_print_center}" "justify" "Folder not supported." "=" 1>&2 && _newline "\n" 1>&2 && continue
                 ## TODO: Add support to clone folders
             else
+                # export DESCRIPTION_FILE, used for descriptions in _clone_file function
+                export DESCRIPTION_FILE="${DESCRIPTION}"
+
                 _print_center "justify" "Given Input" ": File ID" "="
                 _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
                 _clone_file "${UPLOAD_MODE:-create}" "${gdrive_id}" "${WORKSPACE_FOLDER_ID}" "${name}" "${size}" ||

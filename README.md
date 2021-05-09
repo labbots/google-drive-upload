@@ -56,7 +56,7 @@
   - [Config file](#config)
   - [Upload](#upload)
   - [Upload Script Custom Flags](#upload-script-custom-flags)
-  - [Multiple Inputs](#multiple-inputs)  
+  - [Multiple Inputs](#multiple-inputs)
   - [Resuming Interrupted Uploads](#resuming-interrupted-uploads)
 - [Additional Usage](#additional-usage)
   - [Synchronisation](#synchronisation)
@@ -499,6 +499,22 @@ These are the custom flags that are currently implemented:
     Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders and single/multiple files.
 
     Note: If you use this flag along with -d/--skip-duplicates, the skip duplicates flag is preferred.
+
+    ---
+
+-   <strong>-desc | --description | --description-all 'description'</strong>
+
+    Specify description for the given file.
+
+    To use the respective metadata of a file, below is the format:
+
+    File name ( fullname ): %f
+    Size: %s
+    Mime Type: %m
+
+    Now to actually use it: `--description 'Filename: %f, Size: %s, Mime: %m'`
+
+    Note: For files inside folders, use `--description-all` flag.
 
     ---
 

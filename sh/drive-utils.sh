@@ -31,7 +31,7 @@ _check_existing_file() (
 ###################################################
 # Copy/Clone a public gdrive file/folder from another/same gdrive account
 # Globals: 6 variables, 2 functions
-#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN
+#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN, DESCRIPTION_FILE
 #   Functions - _print_center, _check_existing_file, _json_value, _bytes_to_human, _clear_line
 # Arguments: 5
 #   ${1} = update or upload ( upload type )
@@ -48,9 +48,16 @@ _check_existing_file() (
 _clone_file() {
     [ $# -lt 5 ] && printf "Missing arguments\n" && return 1
     job_clone_file="${1}" file_id_clone_file="${2}" file_root_id_clone_file="${3}" name_clone_file="${4}" size_clone_file="${5}"
-    unset post_data_clone_file response_clone_file readable_size_clone_file && STRING="Cloned"
-    post_data_clone_file="{\"parents\": [\"${file_root_id_clone_file}\"]}"
+    unset post_data_clone_file response_clone_file readable_size_clone_file description_clone_file && STRING="Cloned"
     readable_size_clone_file="$(printf "%s\n" "${size_clone_file}" | _bytes_to_human)"
+
+    # create description data
+    [ -n "${DESCRIPTION_FILE}" ] && {
+        description_clone_file="$(printf "%s\n" "${DESCRIPTION_FILE}" | sed -e "s|%f|${name_clone_file}|g|" -e "s|%f|${readable_size_clone_file}|g|")"
+        description_clone_file="$(_json_escape "${description_clone_file}")" # escape for json
+    }
+
+    post_data_clone_file="{\"parents\": [\"${file_root_id_clone_file}\"]${description_clone_file:+,\"description\":\"${description_clone_file}\"}}"
 
     _print_center "justify" "${name_clone_file} " "| ${readable_size_clone_file}" "="
 
@@ -184,7 +191,7 @@ _extract_id() {
 # Upload ( Create/Update ) files on gdrive.
 # Interrupted uploads can be resumed.
 # Globals: 8 variables, 10 functions
-#   Variables - API_URL, API_VERSION, QUIET, VERBOSE, VERBOSE_PROGRESS, CURL_PROGRESS, LOG_FILE_ID, ACCESS_TOKEN
+#   Variables - API_URL, API_VERSION, QUIET, VERBOSE, VERBOSE_PROGRESS, CURL_PROGRESS, LOG_FILE_ID, ACCESS_TOKEN, DESCRIPTION_FILE
 #   Functions - _url_encode, _json_value, _print_center, _bytes_to_human
 #               _generate_upload_link, _upload_file_from_uri, _log_upload_session, _remove_upload_session
 #               _full_upload, _collect_file_info
@@ -204,7 +211,8 @@ _upload_file() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     job_upload_file="${1}" input_upload_file="${2}" folder_id_upload_file="${3}"
     unset slug_upload_file inputname_upload_file extension_upload_file inputsize_upload_file readable_size_upload_file request_method_upload_file \
-        url_upload_file postdata_upload_file uploadlink_upload_file upload_body_upload_file mime_type_upload_file resume_args_upload_file
+        url_upload_file postdata_upload_file uploadlink_upload_file upload_body_upload_file mime_type_upload_file resume_args_upload_file \
+        description_upload_file
 
     slug_upload_file="${input_upload_file##*/}"
     inputname_upload_file="${slug_upload_file%.*}"
@@ -218,6 +226,12 @@ _upload_file() {
             "${QUIET:-_print_center}" "justify" "Error: file or mimetype command not found." "=" && printf "\n"
             exit 1
         }
+    }
+
+    # create description data
+    [ -n "${DESCRIPTION_FILE}" ] && {
+        description_upload_file="$(printf "%s\n" "${DESCRIPTION_FILE}" | sed -e "s|%f|${slug_upload_file}|g" -e "s|%f|${readable_size_upload_file}|g" -e "s|%m|${mime_type_upload_file}|g")"
+        description_upload_file="$(_json_escape "${description_upload_file}")" # escape for json
     }
 
     _print_center "justify" "${slug_upload_file}" " | ${readable_size_upload_file}" "="
@@ -238,7 +252,7 @@ _upload_file() {
                     { _error_logging_upload "${slug_upload_file}" "${file_check_json_upload_file}" || return 1; }
                 url_upload_file="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id_upload_file}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
-                postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"addParents\": [\"${folder_id_upload_file}\"]}"
+                postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"addParents\": [\"${folder_id_upload_file}\"]${description_upload_file:+,\"description\":\"${description_upload_file}\"}}"
                 STRING="Updated"
             fi
         else
@@ -251,7 +265,7 @@ _upload_file() {
         url_upload_file="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
         request_method_upload_file="POST"
         # JSON post data to specify the file name and folder under while the file to be created
-        postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"parents\": [\"${folder_id_upload_file}\"]}"
+        postdata_upload_file="{\"mimeType\": \"${mime_type_upload_file}\",\"name\": \"${slug_upload_file}\",\"parents\": [\"${folder_id_upload_file}\"]${description_upload_file:+,\"description\":\"${description_upload_file}\"}}"
         STRING="Uploaded"
     }
 

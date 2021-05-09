@@ -30,7 +30,7 @@ _check_existing_file() {
 ###################################################
 # Copy/Clone a public gdrive file/folder from another/same gdrive account
 # Globals: 6 variables, 2 functions
-#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN
+#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN, DESCRIPTION_FILE
 #   Functions - _print_center, _check_existing_file, _json_value, _bytes_to_human, _clear_line
 # Arguments: 5
 #   ${1} = update or upload ( upload type )
@@ -47,9 +47,16 @@ _check_existing_file() {
 _clone_file() {
     [[ $# -lt 5 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare job="${1}" file_id="${2}" file_root_id="${3}" name="${4}" size="${5}"
-    declare clone_file_post_data clone_file_response readable_size _file_id && STRING="Cloned"
-    clone_file_post_data="{\"parents\": [\"${file_root_id}\"]}"
+    declare clone_file_post_data clone_file_response readable_size _file_id description && STRING="Cloned"
     readable_size="$(_bytes_to_human "${size}")"
+
+    # create description data
+    [[ -n ${DESCRIPTION_FILE} ]] && {
+        : "${DESCRIPTION_FILE//%f/${name}}" && : "${_//%s/${readable_size}}"
+        description="$(_json_escape "${_}")" # escape for json
+    }
+
+    clone_file_post_data="{\"parents\": [\"${file_root_id}\"]${description:+,\"description\":\"${description}\"}}"
 
     _print_center "justify" "${name} " "| ${readable_size}" "="
 
@@ -181,7 +188,7 @@ _extract_id() {
 # Upload ( Create/Update ) files on gdrive.
 # Interrupted uploads can be resumed.
 # Globals: 8 variables, 10 functions
-#   Variables - API_URL, API_VERSION, QUIET, VERBOSE, VERBOSE_PROGRESS, CURL_PROGRESS, LOG_FILE_ID, ACCESS_TOKEN
+#   Variables - API_URL, API_VERSION, QUIET, VERBOSE, VERBOSE_PROGRESS, CURL_PROGRESS, LOG_FILE_ID, ACCESS_TOKEN, DESCRIPTION_FILE
 #   Functions - _url_encode, _json_value, _print_center, _bytes_to_human
 #               _generate_upload_link, _upload_file_from_uri, _log_upload_session, _remove_upload_session
 #               _full_upload, _collect_file_info
@@ -200,7 +207,8 @@ _extract_id() {
 _upload_file() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare job="${1}" input="${2}" folder_id="${3}" \
-        slug inputname extension inputsize readable_size request_method url postdata uploadlink upload_body mime_type resume_args1 resume_args2 resume_args3
+        slug inputname extension inputsize readable_size request_method url postdata uploadlink upload_body mime_type description \
+        resume_args1 resume_args2 resume_args3
 
     slug="${input##*/}"
     inputname="${slug%.*}"
@@ -214,6 +222,12 @@ _upload_file() {
             "${QUIET:-_print_center}" "justify" "Error: file or mimetype command not found." "=" && printf "\n"
             exit 1
         }
+    }
+
+    # create description data
+    [[ -n ${DESCRIPTION_FILE} ]] && {
+        : "${DESCRIPTION_FILE//%f/${slug}}" && : "${_//%s/${inputsize}}" && : "${_//%m/${mime_type}}"
+        description="$(_json_escape "${_}")" # escape for json
     }
 
     _print_center "justify" "${input##*/}" " | ${readable_size}" "="
@@ -234,7 +248,7 @@ _upload_file() {
                     { _error_logging_upload "${slug}" "${file_check_json}" || return 1; }
                 url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
-                postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]}"
+                postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]${description:+,\"description\":\"${description}\"}}"
                 STRING="Updated"
             fi
         else
@@ -247,7 +261,7 @@ _upload_file() {
         url="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
         request_method="POST"
         # JSON post data to specify the file name and folder under while the file to be created
-        postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"parents\": [\"${folder_id}\"]}"
+        postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"parents\": [\"${folder_id}\"]${description:+,\"description\":\"${description}\"}}"
         STRING="Uploaded"
     }
 
