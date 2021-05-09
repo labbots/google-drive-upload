@@ -1076,8 +1076,8 @@ _upload_file() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     job_upload_file="${1}" input_upload_file="${2}" folder_id_upload_file="${3}"
     unset slug_upload_file inputname_upload_file extension_upload_file inputsize_upload_file readable_size_upload_file request_method_upload_file \
-        url_upload_file postdata_upload_file uploadlink_upload_file upload_body_upload_file mime_type_upload_file resume_args_upload_file \
-        description_upload_file
+        url_upload_file postdata_upload_file uploadlink_upload_file upload_body_upload_file mime_type_upload_file description_upload_file \
+        resume_args1_upload_file resume_args2_upload_file resume_args3_upload_file
 
     slug_upload_file="${input_upload_file##*/}"
     inputname_upload_file="${slug_upload_file%.*}"
@@ -1150,7 +1150,7 @@ _upload_file() {
                     content_range_upload_file="$(printf "bytes %s-%s/%s\n" "$((uploaded_range_upload_file + 1))" "$((inputsize_upload_file - 1))" "${inputsize_upload_file}")"
                     content_length_upload_file="$((inputsize_upload_file - $((uploaded_range_upload_file + 1))))"
                     # Resuming interrupted uploads needs http1.1
-                    resume_args1='-s' resume_args2='--http1.1' resume_args3="Content-Range: ${content_range_upload_file}"
+                    resume_args1_upload_file='-s' resume_args2_upload_file='--http1.1' resume_args3_upload_file="Content-Range: ${content_range_upload_file}"
                     _upload_file_from_uri _clear_line
                     _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1
                     _normal_logging_upload
@@ -1211,8 +1211,8 @@ _upload_file_from_uri() {
         -o- \
         --url "${uploadlink_upload_file}" \
         --globoff \
-        ${CURL_SPEED} ${resume_args1} ${resume_args2} \
-        -H "${resume_args3}" || :)"
+        ${CURL_SPEED} ${resume_args1_upload_file} ${resume_args2_upload_file} \
+        -H "${resume_args3_upload_file}" || :)"
     [ -z "${VERBOSE_PROGRESS}" ] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
     return 0
 }
