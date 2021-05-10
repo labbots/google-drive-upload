@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Usage on Google Drive Upload</title>
+    <link>https://labbots.github.io/google-drive-upload/usage/</link>
+    <description>Recent content in Usage on Google Drive Upload</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 10 May 2021 18:06:06 +0100</lastBuildDate><atom:link href="https://labbots.github.io/google-drive-upload/usage/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Gupload Script</title>
+      <link>https://labbots.github.io/google-drive-upload/usage/gupload/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/usage/gupload/</guid>
+      <description>For uploading files/remote gdrive files, the syntax is simple;
+gupload filename/foldername/file_id/file_link -c gdrive_folder_name
+where filename/foldername is input file/folder and gdrive_folder_name is the name of the folder on gdrive, where the input file/folder will be uploaded.
+and file_id/file_link is the accessible gdrive file link or id which will be uploaded without downloading.
+If gdrive_folder_name is present on gdrive, then script will upload there, else will make a folder with that name.</description>
+    </item>
+    
+    <item>
+      <title>Sync Script</title>
+      <link>https://labbots.github.io/google-drive-upload/usage/sync/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/usage/sync/</guid>
+      <description>This repo also provides an additional script ( sync.bash or sync.sh ) to utilise gupload for synchronisation jobs, i.e background jobs.
+Basic Usage To create a sync job, just run
+gsync folder_name -d gdrive_folder
+Here, folder_name is the local folder you want to sync and gdrive_folder is google drive folder name.
+In the local folder, all the contents present or added in the future will be automatically uploaded.
+Note: Giving gdrive_folder is optional, if you don&amp;rsquo;t specify a name with -d/&amp;ndash;directory flags, then it will upload in the root folder set by gupload command.</description>
+    </item>
+    
+  </channel>
+</rss>

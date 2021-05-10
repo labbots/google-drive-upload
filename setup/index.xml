@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Setup on Google Drive Upload</title>
+    <link>https://labbots.github.io/google-drive-upload/setup/</link>
+    <description>Recent content in Setup on Google Drive Upload</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 10 May 2021 18:06:06 +0100</lastBuildDate><atom:link href="https://labbots.github.io/google-drive-upload/setup/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Installation</title>
+      <link>https://labbots.github.io/google-drive-upload/setup/install/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/setup/install/</guid>
+      <description>You can install the script by automatic installation script provided in the repository.
+This will also install the synchronisation script provided in the repo.
+Installation script also checks for the native dependencies.
+Default values set by automatic installation script, which are changeable:
+Repo: labbots/google-drive-upload
+Command name: gupload
+Sync command name: gsync
+Installation path: $HOME/.google-drive-upload
+Source: release { can be branch }
+Source value: latest { can be branchname }
+Shell file: .</description>
+    </item>
+    
+    <item>
+      <title>Initial Setup</title>
+      <link>https://labbots.github.io/google-drive-upload/setup/initial_setup/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/setup/initial_setup/</guid>
+      <description>First, we need to obtain our oauth credentials, here&amp;rsquo;s how to do it:
+Generating Oauth Credentials  Follow Enable Drive API section. Open google console. Click on &amp;ldquo;Credentials&amp;rdquo;. Click &amp;ldquo;Create credentials&amp;rdquo; and select oauth client id. Select Application type &amp;ldquo;Desktop app&amp;rdquo; or &amp;ldquo;other&amp;rdquo;. Provide name for the new credentials. ( anything ) This would provide a new Client ID and Client Secret. Download your credentials.json by clicking on the download button.</description>
+    </item>
+    
+    <item>
+      <title>Update</title>
+      <link>https://labbots.github.io/google-drive-upload/setup/update/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/setup/update/</guid>
+      <description>If you have followed the automatic method to install the script, then you can automatically update the script.
+There are two methods:
+  Use the script itself to update the script.
+gupload -u or gupload --update
+This will update the script where it is installed.
+If you use the this flag without actually installing the script,e.g just by sh upload.sh -u then it will install the script or update if already installed.</description>
+    </item>
+    
+    <item>
+      <title>Configuration</title>
+      <link>https://labbots.github.io/google-drive-upload/setup/configuration/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/setup/configuration/</guid>
+      <description>After first run, the credentials are saved in config file. By default, the config file is ${HOME}/.googledrive.conf.
+To change the default config file or use a different one temporarily, see -z / --config custom in Upload Script Custom Flags.
+This is the format of a config file:
+ACCOUNT_default_CLIENT_ID=&amp;#34;client id&amp;#34; ACCOUNT_default_CLIENT_SECRET=&amp;#34;client secret&amp;#34; ACCOUNT_default_REFRESH_TOKEN=&amp;#34;refresh token&amp;#34; SYNC_DEFAULT_ARGS=&amp;#34;default args of gupload command for gsync&amp;#34; ACCOUNT_default_ROOT_FOLDER_NAME=&amp;#34;root folder name&amp;#34; ACCOUNT_default_ROOT_FOLDER=&amp;#34;root folder id&amp;#34; ACCOUNT_default_ACCESS_TOKEN=&amp;#34;access token&amp;#34; ACCOUNT_default_ACCESS_TOKEN_EXPIRY=&amp;#34;access token expiry&amp;#34; where default is the name of the account.</description>
+    </item>
+    
+    <item>
+      <title>Uninstallation</title>
+      <link>https://labbots.github.io/google-drive-upload/setup/uninstall/</link>
+      <pubDate>Mon, 10 May 2021 18:06:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/setup/uninstall/</guid>
+      <description>If you have followed the automatic method to install the script, then you can automatically uninstall the script.
+There are two methods:
+  Use the script itself to uninstall the script.
+gupload -U or gupload --uninstall
+This will remove the script related files and remove path change from shell file.
+  Run the installation script again with -U/&amp;ndash;uninstall flag
+curl --compressed -Ls https://github.com/labbots/google-drive-upload/raw/master/install.sh | sh -s -- --uninstall Yes, just run the installation script again with the flag and voila, it&amp;rsquo;s done.</description>
+    </item>
+    
+  </channel>
+</rss>

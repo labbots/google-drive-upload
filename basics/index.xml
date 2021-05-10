@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Basics on Google Drive Upload</title>
+    <link>https://labbots.github.io/google-drive-upload/basics/</link>
+    <description>Recent content in Basics on Google Drive Upload</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 10 May 2021 18:04:06 +0100</lastBuildDate><atom:link href="https://labbots.github.io/google-drive-upload/basics/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Compatability</title>
+      <link>https://labbots.github.io/google-drive-upload/basics/compatability/</link>
+      <pubDate>Mon, 10 May 2021 18:04:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/basics/compatability/</guid>
+      <description>As this is a collection of shell scripts, there aren&amp;rsquo;t many dependencies. See Native Dependencies for explicitly required program list.
+Linux or MacOS For Linux or MacOS, you hopefully don&amp;rsquo;t need to configure anything extra, it should work by default.
+Android Install Termux and done.
+It&amp;rsquo;s fully tested for all usecases of this script.
+iOS Install iSH
+While it has not been officially tested, but should work given the description of the app.</description>
+    </item>
+    
+    <item>
+      <title>Dependencies</title>
+      <link>https://labbots.github.io/google-drive-upload/basics/dependencies/</link>
+      <pubDate>Mon, 10 May 2021 18:04:06 +0100</pubDate>
+      
+      <guid>https://labbots.github.io/google-drive-upload/basics/dependencies/</guid>
+      <description>This repo contains two types of scripts, posix compatible and bash compatible.
+These programs are required in both bash and posix scripts.   Program Role In Script     curl All network requests   file or mimetype Mimetype generation for extension less files   find To find files and folders for recursive folder uploads   xargs For parallel uploading   mkdir To create folders   rm To remove files and folders   grep Miscellaneous   sed Miscellaneous   mktemp To generate temporary files ( optional )   sleep Self explanatory   ps To manage different processes    If BASH is not available or BASH is available but version is less tham 4.</description>
+    </item>
+    
+  </channel>
+</rss>
