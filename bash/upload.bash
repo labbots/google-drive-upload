@@ -28,6 +28,11 @@ Options:\n
          Note: For files inside folders, use --description-all flag.\n
   -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
+  -SM | -sm | --share-mode 'share mode' - Specify the share mode for sharing file.\n
+        Share modes are: r / reader - Read only permission.\n
+                       : w / writer - Read and write permission.\n
+                       : c / commenter - Comment only permission.\n
+        Note: Although this flag is independent of --share flag but when email is needed, then --share flag use is neccessary.\n
   --speed 'speed' - Limit the download speed, supported formats: 1K, 1M and 1G.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
   -z | --config <config_path> - Override default config file with custom config file.\nIf you want to change default value, then use this format -z/--config default=default=your_config_file_path.\n
@@ -120,7 +125,7 @@ _setup_arguments() {
     # De-initialize if any variables set already.
     unset LIST_ACCOUNTS UPDATE_DEFAULT_ACCOUNT CUSTOM_ACCOUNT_NAME NEW_ACCOUNT_NAME DELETE_ACCOUNT_NAME ACCOUNT_ONLY_RUN
     unset FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY CONTINUE_WITH_NO_INPUT
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES DESCRIPTION SKIP_SUBDIRS ROOTDIR QUIET
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_ROLE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES DESCRIPTION SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
     export CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
@@ -222,6 +227,21 @@ _setup_arguments() {
                 if [[ -n ${2} && ! ${2} = -* && ${2} =~ ${EMAIL_REGEX} ]]; then
                     SHARE_EMAIL="${2}" && shift && export SHARE_EMAIL
                 fi
+                SHARE_ROLE="${SHARE_ROLE:-reader}"
+                ;;
+            -[Ss][Mm] | --share-mode)
+                _check_longoptions "${1}" "${2}"
+                case "${2}" in
+                    r | read*) SHARE_ROLE="reader" ;;
+                    w | write*) SHARE_ROLE="writer" ;;
+                    c | comment*) SHARE_ROLE="commenter" ;;
+                    *)
+                        printf "%s\n" "Invalid share mode given ( ${2} ). Supported values are r or reader / w or writer / c or commenter." &&
+                            exit 1
+                        ;;
+                esac
+                SHARE="_share_id"
+                shift
                 ;;
             --speed)
                 _check_longoptions "${1}" "${2}"
@@ -402,7 +422,7 @@ _setup_workspace() {
 #               WORKSPACE_FOLDER_ID, UPLOAD_MODE, SKIP_DUPLICATES, OVERWRITE, SHARE,
 #               UPLOAD_STATUS, COLUMNS, API_URL, API_VERSION, TOKEN_URL, LOG_FILE_ID
 #               FILE_ID, FILE_LINK, FINAL_ID_INPUT_ARRAY ( array )
-#               PARALLEL_UPLOAD, QUIET, NO_OF_PARALLEL_JOBS, TMPFILE
+#               PARALLEL_UPLOAD, QUIET, NO_OF_PARALLEL_JOBS, TMPFILE, SHARE_ROLE
 #   Functions - _print_center, _clear_line, _newline, _support_ansi_escapes, _print_center_quiet
 #               _upload_file, _share_id, _is_terminal, _dirname,
 #               _create_directory, _json_value, _url_encode, _check_existing_file, _bytes_to_human
@@ -413,9 +433,9 @@ _setup_workspace() {
 _process_arguments() {
     # on successful uploads
     _share_and_print_link() {
-        "${SHARE:-:}" "${1:-}" "${SHARE_EMAIL}"
+        "${SHARE:-:}" "${1:-}" "${SHARE_ROLE}" "${SHARE_EMAIL}"
         [[ -z ${HIDE_INFO} ]] && {
-            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
+            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED[${SHARE_ROLE:0:1}])}" "-"
             _support_ansi_escapes && [[ ${COLUMNS} -gt 45 ]] && _print_center "normal" "↓ ↓ ↓" ' '
             "${QUIET:-_print_center}" "normal" "https://drive.google.com/open?id=${1:-}" " "
         }

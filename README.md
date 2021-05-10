@@ -552,6 +552,20 @@ These are the custom flags that are currently implemented:
 
     ---
 
+-   <strong>-SM | -sm | --share-mode 'share mode'</strong>
+
+    Specify the share mode for sharing file.
+
+    Share modes are:
+
+    - r / reader - Read only permission.
+    - w / writer - Read and write permission.
+    - c / commenter - Comment only permission.
+
+    Note: Although this flag is independent of --share flag but when email is needed, then --share flag use is neccessary.
+
+    ---
+
 -   <strong>--speed 'speed'</strong>
 
     Limit the download speed, supported formats: 1K, 1M and 1G.

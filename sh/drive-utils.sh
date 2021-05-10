@@ -398,7 +398,7 @@ _full_upload() {
 ###################################################
 _share_id() {
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    id_share_id="${1}" share_email_share_id="${2}" role_share_id="reader" type_share_id="${share_email_share_id:+user}"
+    id_share_id="${1}" role_share_id="${2:?Missing role}" share_email_share_id="${3}" role_share_id="reader" type_share_id="${share_email_share_id:+user}"
     unset post_data_share_id response_share_id
 
     "${EXTRA_LOG}" "justify" "Sharing.." "-" 1>&2

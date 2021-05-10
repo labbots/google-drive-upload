@@ -394,7 +394,7 @@ _full_upload() {
 ###################################################
 _share_id() {
     [[ $# -lt 2 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare id="${1}" share_email="${2}" role="reader"
+    declare id="${1}" role="${2:?Missing role}" share_email="${3}"
     declare type="${share_email:+user}" share_post_data share_post_data share_response
 
     "${EXTRA_LOG}" "justify" "Sharing.." "-" 1>&2
