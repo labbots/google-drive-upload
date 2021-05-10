@@ -47,7 +47,8 @@ There are two methods:
   Use the script itself to update the script.
 gupload -u or gupload --update
 This will update the script where it is installed.
-If you use the this flag without actually installing the script,e.g just by sh upload.sh -u then it will install the script or update if already installed.</description>
+If you use the this flag without actually installing the script,
+e.g just by sh upload.sh -u then it will install the script or update if already installed.</description>
     </item>
     
     <item>
