@@ -689,7 +689,7 @@ Uploads interrupted either due to bad internet connection or manual interruption
 
 ### Synchronisation
 
-This repo also provides an additional script ( [sync.sh](https://github.com/labbots/google-drive-upload/blob/master/sync.sh) ) to utilise upload.sh for synchronisation jobs, i.e background jobs.
+This repo also provides an additional script ( [sync.bash](https://github.com/labbots/google-drive-upload/blob/master/bash/sync.bash) or [sync.sh](https://github.com/labbots/google-drive-upload/blob/master/sh/sync.sh) ) to utilise gupload for synchronisation jobs, i.e background jobs.
 
 #### Basic Usage
 
@@ -893,23 +893,27 @@ Now, a systemd service service can also be created which will start sync job aft
 
     The commands that will be printed is explained below:
 
-1.  Start the service `sh gsync-test.service.sh start`, where gsync-test is the service name
+1.  First add the service to the system by `bash "gsync-test.service.sh" add`, where gsync-test is the service name.
+
+1.  Start the service `bash "gsync-test.service.sh" start`.
 
     This is same as starting a sync job with command itself as mentioned in previous section.
 
-    To stop: `sh gsync-test.service.sh stop`
+    To stop: `bash "gsync-test.service.sh" stop`
 
-1.  If you want the job to automatically start on boot, run `sh gsync-test.service.sh enable`
+1.  If you want the job to automatically start on boot, run `bash "gsync-test.service.sh" enable`
 
-    To disable: `sh gsync-test.service.sh disable`
+    To disable: `bash "gsync-test.service.sh" disable`
 
 1.  To see logs after a job has been started.
 
-    `sh gsync-test.service.sh logs`
+    `bash "gsync-test.service.sh" logs`
 
-1.  To remove a job from system, `sh gsync-test.service.sh remove`
+1.  To remove a job from system, `bash "gsync-test.service.sh" remove`
 
-You can use multiple commands at once, e.g: `sh gsync-test.service.sh start logs`, will start and show the logs.
+You can use multiple commands at once, e.g: `bash "gsync-test.service.sh" start logs`, will start and show the logs.
+
+Note: To print the systemd service, use `bash "gsync-test.service.sh" print`.
 
 Note: The script is merely a wrapper, it uses `systemctl` to start/stop/enable/disable the service and `journalctl` is used to show the logs.
 

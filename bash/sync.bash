@@ -218,7 +218,7 @@ _check_and_upload() {
     [[ -n ${new_files[*]} ]] && printf "" >| "${ERROR_LOG}" && {
         declare -A Aseen && for new_file in "${new_files[@]}"; do
             { [[ ${Aseen[new_file]} ]] && continue; } || Aseen[${new_file}]=x
-            if eval "\"${COMMAND_NAME}\"" "\"${new_file}\"" "${ARGS}"; then
+            if eval "\"${COMMAND_PATH}\"" "\"${new_file}\"" "${ARGS}"; then
                 printf "%s\n" "${new_file}" >> "${SUCCESS_LOG}"
             else
                 printf "%s\n" "${new_file}" >> "${ERROR_LOG}"
@@ -467,6 +467,7 @@ _setup_arguments() {
     done
 
     INFO_PATH="${HOME}/.google-drive-upload"
+    CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
     [[ -f ${CONFIG_INFO} ]] && . "${CONFIG_INFO}"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
     SYNC_DETAIL_DIR="${SYNC_DETAIL_DIR:-${INFO_PATH}/sync}"
@@ -487,12 +488,12 @@ _setup_arguments() {
 #               UPDATE_DEFAULT_ARGS, UPDATE_DEFAULT_TIME_TO_SLEEP, TIME_TO_SLEEP
 #   Functions - _print_center, _update_config
 # Arguments: None
-# Result: source .info file, grab COMMAND_NAME and CONFIG
+# Result: grab COMMAND_NAME, INSTALL_PATH, and CONFIG
 #   source CONFIG, update default values if required
 ###################################################
 _config_variables() {
     COMMAND_NAME="${CUSTOM_COMMAND_NAME:-${COMMAND_NAME}}"
-    VALUES_LIST="REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE"
+    VALUES_LIST="REPO COMMAND_NAME SYNC_COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE"
     VALUES_REGEX="" && for i in ${VALUES_LIST}; do
         VALUES_REGEX="${VALUES_REGEX:+${VALUES_REGEX}|}^${i}=\".*\".* # added values"
     done
@@ -518,40 +519,27 @@ _config_variables() {
 }
 
 ###################################################
-# Process all the values in "${FINAL_INPUT_ARRAY[@]}"
-# Globals: 20 variables, 15 functions
-#   Variables - FINAL_INPUT_ARRAY ( array ), GDRIVE_FOLDER, PID_FILE, SHOW_LOGS, LOGS
-#   Functions - _setup_loop_variables, _setup_loop_files, _start_new_loop, _check_pid, _kill_job
-#               _remove_job, _start_new_loop
+# Print systemd service file contents
+# Globals: 5 variables
+# Variables - LOGNAME, INSTALL_PATH, COMMAND_NAME, SYNC_COMMAND_NAME, ALL_ARGUMNETS
 # Arguments: None
-# Result: Start the sync jobs for given folders, if running already, don't start new.
-#   If a pid is detected but not running, remove that job.
 ###################################################
-_process_arguments() {
-    declare current_folder && declare -A Aseen
-    for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
-        { [[ ${Aseen[${INPUT}]} ]] && continue; } || Aseen[${INPUT}]=x
-        ! [[ -d ${INPUT} ]] && printf "\nError: Invalid Input ( %s ), no such directory.\n" "${INPUT}" && continue
-        current_folder="$(pwd)"
-        FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
-        [[ -n ${DEFAULT_ACCOUNT} ]] && _set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${DEFAULT_ACCOUNT}_ROOT_FOLDER_NAME"
-        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME:-Unknown}}"
+_systemd_service_contents() {
+    declare username="${LOGNAME:?Give username}" install_path="${INSTALL_PATH:?Missing install path}" \
+        cmd="${COMMAND_NAME:?Missing command name}" sync_cmd="${SYNC_COMMAND_NAME:?Missing gsync cmd name}" \
+        all_argumnets="${ALL_ARGUMNETS:-}"
 
-        [[ -n ${CREATE_SERVICE} ]] && {
-            ALL_ARGUMNETS="\"${FOLDER}\" ${TO_SLEEP:+-t \"${TO_SLEEP}\"} -a \"${ARGS//  / }\""
-            # shellcheck disable=SC2016
-            CONTENTS='# Systemd service file - start
+    printf "%s\n" '# Systemd service file - start
 [Unit]
 Description=google-drive-upload synchronisation service
 After=network.target
 
 [Service]
 Type=simple
-User='"'${LOGNAME}'"'
+User='"${username}"'
 Restart=on-abort
 RestartSec=3
-EnvironmentFile='"'${HOME}/.google-drive-upload/google-drive-upload.info'"'
-ExecStart=/usr/bin/env bash "${INSTALL_PATH}/${SYNC_COMMAND_NAME}" --foreground --command "${INSTALL_PATH}/${COMMAND_NAME}" --sync-detail-dir "/tmp/sync" '"${ALL_ARGUMNETS}"'
+ExecStart="'"${install_path}/${sync_cmd}"'" --foreground --command "'"${install_path}/${cmd}"'" --sync-detail-dir "/tmp/sync" '"${all_argumnets}"'
 
 # Security
 PrivateTmp=true
@@ -569,32 +557,165 @@ SystemCallArchitectures=native
 [Install]
 WantedBy=multi-user.target
 # Systemd service file - end'
-            num="${num+$((num += 1))}"
-            service_name="gsync-${SERVICE_NAME}${num:+_${num}}"
-            # shellcheck disable=SC2016
-            SCRIPT='#!/usr/bin/env bash
+}
+
+###################################################
+# Create systemd service wrapper script for managing the service
+# Globals: None
+# Arguments: 3
+#   ${1} = Service name
+#   ${1} = Service file contents
+#   ${1} = Script name
+# Result: print the script contents to script file
+###################################################
+_systemd_service_script() {
+    declare name="${1:?Missing service name}" script_name script \
+        service_file_contents="${2:?Missing service file contents}"
+    script_name="${3:?Missing script name}"
+
+    # shellcheck disable=SC2016
+    script='#!/usr/bin/env bash
 set -e
+
+_usage() {
+    printf "%b" "# Service name: '"'${name}'"'
+
+# Print the systemd service file contents
+bash \"${0##*/}\" print\n
+# Add service to systemd files ( this must be run before doing any of the below )
+bash \"${0##*/}\" add\n
+# Start or Stop the service
+bash \"${0##*/}\" start / stop\n
+# Enable or Disable as a boot service:
+bash \"${0##*/}\" enable / disable\n
+# See logs
+bash \"${0##*/}\" logs\n
+# Remove the service from system
+bash \"${0##*/}\" remove\n\n"
+
+    _status
+    exit 0
+}
+
+_status() {
+    declare status current_status
+    status="$(systemctl status '"'${name}'"' 2>&1 || :)"
+    current_status="$(printf "%s\n" "${status}" | env grep -E "●.*|(Loaded|Active|Main PID|Tasks|Memory|CPU): .*" || :)"
+
+    printf "%s\n" "Current status of service: ${current_status:-${status}}"
+    return 0
+}
+
+unset TMPFILE
+
+[[ $# = 0 ]] && _usage
+
+CONTENTS='"'${service_file_contents}'"'
+
+_add_service() {
+    declare service_file_path="/etc/systemd/system/'"${name}"'.service"
+    printf "%s\n" "Service file path: ${service_file_path}"
+    if [[ -f ${service_file_path} ]]; then
+        printf "%s\n" "Service file already exists. Overwriting"
+        sudo mv "${service_file_path}" "${service_file_path}.bak" || exit 1
+        printf "%s\n" "Existing service file was backed up."
+        printf "%s\n" "Old service file: ${service_file_path}.bak"
+    else
+        [[ -z ${TMPFILE} ]] && {
+            { { command -v mktemp 1>|/dev/null && TMPFILE="$(mktemp -u)"; } ||
+                TMPFILE="${PWD}/.$(_t="$(printf "%(%s)T\\n" "-1")" && printf "%s\n" "$((_t * _t))").LOG"; } || exit 1
+        }
+        export TMPFILE
+        trap "exit" INT TERM
+        _rm_tmpfile() { rm -f "${TMPFILE:?}" ; }
+        trap "_rm_tmpfile" EXIT
+        trap "" TSTP # ignore ctrl + z
+
+        { printf "%s\n" "${CONTENTS}" >|"${TMPFILE}" && sudo cp "${TMPFILE}" /etc/systemd/system/'"${name}"'.service; } ||
+            { printf "%s\n" "Error: Failed to add service file to system." && exit 1 ;}
+    fi
+    sudo systemctl daemon-reload || printf "%s\n" "Could not reload the systemd daemon."
+    printf "%s\n" "Service file was successfully added."
+    return 0
+}
+
+_service() {
+    declare service_name='"'${name}'"' action="${1:?}" service_file_path
+    service_file_path="/etc/systemd/system/${service_name}.service"
+    printf "%s\n" "Service file path: ${service_file_path}"
+    [[ -f ${service_file_path} ]] || { printf "%s\n" "Service file does not exist." && exit 1; }
+    sudo systemctl daemon-reload || exit 1
+    case "${action}" in
+        log*) sudo journalctl -u "${service_name}" -f ;;
+        rm | remove)
+            sudo systemctl stop "${service_name}" || :
+            if  sudo rm -f /etc/systemd/system/"${service_name}".service; then
+                sudo systemctl daemon-reload || :
+                printf "%s\n" "Service removed." && return 0
+            else
+                printf "%s\n" "Error: Cannot remove." && exit 1
+            fi
+            ;;
+        *)
+            declare success="${2:?}" error="${3:-}"
+            if sudo systemctl "${action}" "${service_name}"; then
+                printf "%s\n" "Success: ${service_name} ${success}." && return 0
+            else
+                printf "%s\n" "Error: Cannot ${action} ${service_name} ${error}." && exit 1
+            fi
+            ;;
+    esac
+    return 0
+}
+
 while [[ "${#}" -gt 0 ]]; do
     case "${1}" in
-        start) { sudo printf "%s\n" '"'${CONTENTS}'"' >| /etc/systemd/system/'"${service_name}"'.service && sudo systemctl daemon-reload && sudo systemctl start '"'${service_name}'"' && printf "%s\n" '"'${service_name} started.'"' ;} || {
-                printf "%s\n" '"'Error: Cannot start ${service_name}'"' && exit 1 ;} ;;
-        stop) { sudo systemctl stop '"'${service_name}'"' && printf "%s\n" '"'${service_name} stopped.'"' ;} || { printf "%s\n" '"'Error: Cannot stop ${service_name}'"' && exit 1 ;} ;;
-        enable) { sudo systemctl enable '"'${service_name}'"' && printf "%s\n" '"'${service_name} boot service enabled.'"' ;} || { printf "%s\n" '"'Error: Cannot enable ${service_name}'"' && exit 1 ;} ;;
-        disable) { sudo systemctl disable '"'${service_name}'"' && printf "%s\n" '"'${service_name} boot service disabled.'"' ;} || { printf "%s\n" '"'Error: Cannot disabled ${service_name}'"' && exit 1 ;} ;;
-        logs) sudo journalctl -u '"'${service_name}'"' -f ;;
-        remove) { sudo systemctl stop '"'${service_name}'"' && sudo rm -f /etc/systemd/system/'"'${service_name}'"'.service && sudo systemctl daemon-reload && printf "%s\n" '"'${service_name} removed.'"' ;} || {
-                printf "%s\n" '"'Error: Cannot remove ${service_name}'"' && exit 1 ;} ;;
+        print) printf "%s\n" "${CONTENTS}" ;;
+        add) _add_service ;;
+        start) _service start started ;;
+        stop) _service stop stopped ;;
+        enable) _service enable "boot service enabled" "boot service" ;;
+        disable) _service disable "boot service disabled" "boot service" ;;
+        logs) _service logs ;;
+        remove) _service rm ;;
+        *) printf "%s\n" "Error: No valid options provided." && _usage ;;
     esac
     shift
 done'
-            printf "%s\n" "${SCRIPT}" >| "${service_name}.service.bash"
+    printf "%s\n" "${script}" >| "${script_name}"
+    return 0
+}
+
+###################################################
+# Process all the values in "${FINAL_INPUT_ARRAY[@]}"
+# Globals: 20 variables, 15 functions
+#   Variables - FINAL_INPUT_ARRAY ( array ), DEFAULT_ACCOUNT, ROOT_FOLDER_NAME, GDRIVE_FOLDER
+#               PID_FILE, SHOW_LOGS, LOGS, KILL, INFO, CREATE_SERVICE, ARGS, SERVICE_NAME
+# Functions - _set_value, _systemd_service_script, _systemd_service_contents, _print_center, _check_existing_loop, _start_new_loop
+# Arguments: None
+# Result: Start the sync jobs for given folders, if running already, don't start new.
+#   If a pid is detected but not running, remove that job.
+#   If service script is going to be created then don,t touch the jobs
+###################################################
+_process_arguments() {
+    declare current_folder && declare -A Aseen
+    for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
+        { [[ ${Aseen[${INPUT}]} ]] && continue; } || Aseen[${INPUT}]=x
+        ! [[ -d ${INPUT} ]] && printf "\nError: Invalid Input ( %s ), no such directory.\n" "${INPUT}" && continue
+        current_folder="$(pwd)"
+        FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
+        [[ -n ${DEFAULT_ACCOUNT} ]] && _set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${DEFAULT_ACCOUNT}_ROOT_FOLDER_NAME"
+        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME:-Unknown}}"
+
+        [[ -n ${CREATE_SERVICE} ]] && {
+            ALL_ARGUMNETS="\"${FOLDER}\" ${TO_SLEEP:+-t \"${TO_SLEEP}\"} -a \"${ARGS//  / }\""
+            num="${num+$((num += 1))}"
+            service_name="gsync-${SERVICE_NAME}${num:+_${num}}"
+            script_name="${service_name}.service.sh"
+            _systemd_service_script "${service_name}" "$(_systemd_service_contents)" "${script_name}"
+
             _print_center "normal" "=" "="
-            printf "%s\n" "Service Name: ${service_name}"
-            printf "\n%s\n%s\n" "Folder: ${FOLDER}" "Gdrive Folder: ${GDRIVE_FOLDER}"
-            printf "\n%b\n" "# To start or stop the service\nbash ${service_name}.service.bash start / stop"
-            printf "\n%b\n" "# To enable or disable as a boot service:\nbash ${service_name}.service.bash enable / disable"
-            printf "\n%b\n" "# To see logs\nbash ${service_name}.service.bash logs"
-            printf "\n%b\n" "# To remove\nbash ${service_name}.service.bash remove"
+            bash "${script_name}"
             _print_center "normal" "=" "="
             continue
         }
