@@ -1,0 +1,41 @@
+baseURL = "https://labbots.github.io/google-drive-upload/"
+languageCode = "en-us"
+title = "Google Drive Upload"
+theme = "hugo-theme-learn"
+canonifyurls = true
+googleAnalytics= "G-S0LJXGNWDR"
+[privacy]
+  [privacy.googleAnalytics]
+    anonymizeIP = true
+    disable = false
+    respectDoNotTrack = true
+    useSessionStorage = false
+# For search functionality
+[outputs]
+home = [ "HTML", "RSS", "JSON"]
+[params]
+  # Change default color scheme with a variant one. Can be "red", "blue", "green".
+  themeVariant = "blue"
+  disableNextPrev = true
+  showVisitedLinks = false
+  ordersectionsby = "weight"
+[[menu.shortcuts]]
+name = "<i class='fab fa-github'></i> Google Drive Upload"
+identifier = "bash-gupload-repo"
+url = "https://github.com/labbots/google-drive-upload"
+weight = 1
+[[menu.shortcuts]]
+name = "<i class='fab fa-github'></i> Bash Utility"
+identifier = "bash-utility-repo"
+url = "https://github.com/labbots/bash-utility"
+weight = 2
+[[menu.shortcuts]]
+name = "<i class='fab fa-github'></i> Bash Oneliner"
+identifier = "bash-oneliner-repo"
+url = "https://github.com/labbots/bash-oneliners"
+weight = 9
+[markup]
+  [markup.tableOfContents]
+    endLevel = 3
+    ordered = false
+    startLevel = 2

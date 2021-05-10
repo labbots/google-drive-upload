@@ -1,0 +1,74 @@
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-S0LJXGNWDR"></script>
+<script src="https://unpkg.com/vanilla-back-to-top@7.2.1/dist/vanilla-back-to-top.min.js"></script>
+<script type="application/javascript">addBackToTop({
+    diameter: 56,
+    backgroundColor: 'rgb(255, 82, 82)',
+    textColor: '#fff',
+  })
+</script>
+<script src="/js/cookie-consent.js"></script>
+{{- $pc := .Site.Config.Privacy.GoogleAnalytics -}}
+{{ $url := urls.Parse .Site.BaseURL }}
+{{ $host := split $url.Host ":" }}
+
+<script type="application/javascript">
+  {{ template "__ga_js_set_doNotTrack" $ }}
+
+  const options = {
+    cookieName: 'cookie_consent',
+    cookieConfig: {
+      domain: '{{ index $host 0 }}',
+      path: '{{ $url.Path }}'
+    },
+    heading: '',
+    description: 'We use cookies to ensure you get the best experience on our website. Read about how we use cookies and how you can control them by clicking Preferences. <a href="https://www.cookiesandyou.com/" https://www.cookiesandyou.com/>Learn more</a>',
+    acceptLabel: 'Accept Cookies',
+    settingsLabel: 'Preferences',
+    closeLabel: 'Save Settings',
+    choices: {
+      necessary: {
+        label: 'Required cookies',
+        description:
+          "These can't be turned off as they are used to control all the other cookies",
+        value: true
+      },
+      tracking: false,
+      marketing: false
+    },
+    showEditIcon: false,
+    categories: {
+      analytics:
+      {
+        enabled : function() {
+          {{- if and (not $pc.Disable) (not .Site.IsServer) -}}
+            {{ with .Site.GoogleAnalytics }}
+              var ga_config = {}
+              {{ if $pc.AnonymizeIP }}
+              ga_config.anonymize_ip = true;
+              {{ end }}
+              if (!doNotTrack) {
+                window['ga-disable-{{ . }}'] = false;
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '{{ . }}',ga_config);
+              }
+            {{ end }}
+          {{- end -}}
+        },
+        disabled :function() {
+          window['ga-disable-{{ .Site.GoogleAnalytics }}'] = true;
+          window.GdprConsent.cookies().remove('_ga');
+          window.GdprConsent.cookies().remove('_gid');
+          window.GdprConsent.cookies().remove('_gat_gtag_{{ replace .Site.GoogleAnalytics "-" "_" }}');
+        },
+      }
+    }
+  }
+  const banner = GdprConsent.attachBanner(document.body, options)
+
+  function showCookiePreference() {
+    window.GdprConsent.showBanner(banner);
+  }
+</script>
+
