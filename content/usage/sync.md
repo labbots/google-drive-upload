@@ -8,7 +8,7 @@ weight : 2
 
 This repo also provides an additional script ( [sync.bash](https://github.com/labbots/google-drive-upload/blob/master/bash/sync.bash) or [sync.sh](https://github.com/labbots/google-drive-upload/blob/master/sh/sync.sh) ) to utilise gupload for synchronisation jobs, i.e background jobs.
 
-#### Basic Usage
+### Basic Usage
 
 To create a sync job, just run
 
@@ -26,7 +26,7 @@ Default wait time: 3 secs ( amount of time to wait before checking new files ).
 
 Default gupload arguments: None ( see -a/--arguments section below ).
 
-#### Sync Script Custom Flags
+### Sync Script Custom Flags
 
 Read this section thoroughly to fully utilise the sync script, feel free to open an issue if any doubts regarding the usage.
 
@@ -189,7 +189,7 @@ Read this section thoroughly to fully utilise the sync script, feel free to open
 ***Note:*** Flags that use pid number as input should be used at last, if you are not intending to provide pid number, say in case of a folder name with positive integers.
 
 
-#### Background Sync Jobs
+### Background Sync Jobs
 
 There are basically two ways to start a background job, first one we already covered in the above section.
 
