@@ -12,21 +12,21 @@
     <title>Sync Script :: Google Drive Upload</title>
 
     
-    <link href="https://labbots.github.io/google-drive-upload/css/nucleus.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/fontawesome-all.min.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/hybrid.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/featherlight.min.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/perfect-scrollbar.min.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/auto-complete.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/atom-one-dark-reasonable.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/theme.css?1620673414" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/hugo-theme.css?1620673414" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/nucleus.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/fontawesome-all.min.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/hybrid.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/featherlight.min.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/perfect-scrollbar.min.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/auto-complete.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/atom-one-dark-reasonable.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/theme.css?1620675135" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/hugo-theme.css?1620675135" rel="stylesheet">
     
-    <link href="https://labbots.github.io/google-drive-upload/css/theme-blue.css?1620673414" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/theme-blue.css?1620675135" rel="stylesheet">
     
     
 
-    <script src="https://labbots.github.io/google-drive-upload/js/jquery-3.3.1.min.js?1620673414"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/jquery-3.3.1.min.js?1620675135"></script>
 
     <style>
       :root #header + #content > #left > #rlblock_left{
@@ -236,14 +236,14 @@
     <span data-search-clear=""><i class="fas fa-times"></i></span>
 </div>
 
-<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/lunr.min.js?1620673414"></script>
-<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/auto-complete.js?1620673414"></script>
+<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/lunr.min.js?1620675135"></script>
+<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/auto-complete.js?1620675135"></script>
 <script type="text/javascript">
     
         var baseurl = "https:\/\/labbots.github.io\/google-drive-upload\/";
     
 </script>
-<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/search.js?1620673414"></script>
+<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/search.js?1620675135"></script>
 
     
   </div>
@@ -645,7 +645,9 @@
   <ul>
     <li>
       <ul>
-        <li></li>
+        <li><a href="#basic-usage">Basic Usage</a></li>
+        <li><a href="#sync-script-custom-flags">Sync Script Custom Flags</a></li>
+        <li><a href="#background-sync-jobs">Background Sync Jobs</a></li>
       </ul>
     </li>
   </ul>
@@ -673,7 +675,7 @@
 
 
 <p>This repo also provides an additional script ( <a href="https://github.com/labbots/google-drive-upload/blob/master/bash/sync.bash">sync.bash</a> or <a href="https://github.com/labbots/google-drive-upload/blob/master/sh/sync.sh">sync.sh</a> ) to utilise gupload for synchronisation jobs, i.e background jobs.</p>
-<h4 id="basic-usage">Basic Usage</h4>
+<h3 id="basic-usage">Basic Usage</h3>
 <p>To create a sync job, just run</p>
 <p><code>gsync folder_name -d gdrive_folder</code></p>
 <p>Here, <code>folder_name</code> is the local folder you want to sync and <code>gdrive_folder</code> is google drive folder name.</p>
@@ -682,7 +684,7 @@
 <p>Also, gdrive folder creation works in the same way as gupload command.</p>
 <p>Default wait time: 3 secs ( amount of time to wait before checking new files ).</p>
 <p>Default gupload arguments: None ( see -a/&ndash;arguments section below ).</p>
-<h4 id="sync-script-custom-flags">Sync Script Custom Flags</h4>
+<h3 id="sync-script-custom-flags">Sync Script Custom Flags</h3>
 <p>Read this section thoroughly to fully utilise the sync script, feel free to open an issue if any doubts regarding the usage.</p>
 <ul>
 <li>
@@ -819,7 +821,7 @@
 </li>
 </ul>
 <p><em><strong>Note:</strong></em> Flags that use pid number as input should be used at last, if you are not intending to provide pid number, say in case of a folder name with positive integers.</p>
-<h4 id="background-sync-jobs">Background Sync Jobs</h4>
+<h3 id="background-sync-jobs">Background Sync Jobs</h3>
 <p>There are basically two ways to start a background job, first one we already covered in the above section.</p>
 <p>It will indefinitely run until and unless the host machine is rebooted.</p>
 <p>Now, a systemd service service can also be created which will start sync job after boot.</p>
@@ -1101,19 +1103,19 @@
     <div style="left: -1000px; overflow: scroll; position: absolute; top: -1000px; border: none; box-sizing: content-box; height: 200px; margin: 0px; padding: 0px; width: 200px;">
       <div style="border: none; box-sizing: content-box; height: 200px; margin: 0px; padding: 0px; width: 200px;"></div>
     </div>
-    <script src="https://labbots.github.io/google-drive-upload/js/clipboard.min.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.min.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.jquery.min.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/jquery.sticky.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/featherlight.min.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/highlight.pack.js?1620673414"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/clipboard.min.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.min.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.jquery.min.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/jquery.sticky.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/featherlight.min.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/highlight.pack.js?1620675135"></script>
     <script>hljs.initHighlightingOnLoad();</script>
-    <script src="https://labbots.github.io/google-drive-upload/js/modernizr.custom-3.6.0.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/learn.js?1620673414"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/hugo-learn.js?1620673414"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/modernizr.custom-3.6.0.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/learn.js?1620675135"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/hugo-learn.js?1620675135"></script>
     
         
-            <script src="https://labbots.github.io/google-drive-upload/mermaid/mermaid.js?1620673414"></script>
+            <script src="https://labbots.github.io/google-drive-upload/mermaid/mermaid.js?1620675135"></script>
         
         <script>
             mermaid.initialize({ startOnLoad: true });
