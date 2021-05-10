@@ -47,7 +47,7 @@ This section provides information on how to utilise the install.sh script for cu
 
 These are the flags that are available in the install.sh script:
 
--   <strong>-p | --path <dir_name></strong>
+-   **-p | --path <dir_name>**
 
     Custom path where you want to install the script.
 
@@ -55,7 +55,7 @@ These are the flags that are available in the install.sh script:
 
     ---
 
--   <strong>-c | --cmd <command_name></strong>
+-   **-c | --cmd <command_name>**
 
     Custom command name, after installation, script will be available as the input argument.
 
@@ -63,25 +63,25 @@ These are the flags that are available in the install.sh script:
 
     ---
 
--   <strong>-r | --repo <Username/reponame></strong>
+-   **-r | --repo <Username/reponame>**
 
     Install script from your custom repo, e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.
 
     ---
 
--   <strong>-B | --branch <branch_name></strong>
+-   **-B | --branch <branch_name>**
 
     Specify branch name for the github repo, applies to custom and default repo both.
 
     ---
 
--   <strong>-R | --release <tag/release_tag></strong>
+-   **-R | --release <tag/release_tag>**
 
     Specify tag name for the github repo, applies to custom and default repo both.
 
     ---
 
--   <strong>-t | --time 'no of days'</strong>
+-   **-t | --time 'no of days'**
 
     Specify custom auto update time ( given input will taken as number of days ) after which script will try to automatically update itself.
 
@@ -89,37 +89,37 @@ These are the flags that are available in the install.sh script:
 
     ---
 
--   <strong>-s | --shell-rc <shell_file></strong>
+-   **-s | --shell-rc <shell_file>**
 
     Specify custom rc file, where PATH is appended, by default script detects .zshrc, .bashrc. and .profile.
 
     ---
 
--   <strong>--sh | --posix</strong>
+-   **--sh | --posix**
 
     Force install posix scripts even if system has compatible bash binary present.
 
     ---
 
--   <strong>-q | --quiet</strong>
+-   **-q | --quiet**
 
     Only show critical error/sucess logs.
 
     ---
 
--   <strong>-U | --uninstall</strong>
+-   **-U | --uninstall**
 
     Uninstall the script and remove related files.\n
 
     ---
 
--   <strong>-D | --debug</strong>
+-   **-D | --debug**
 
     Display script command trace.
 
     ---
 
--   <strong>-h | --help</strong>
+-   **-h | --help**
 
     Display usage instructions.
 

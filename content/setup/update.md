@@ -15,15 +15,15 @@ There are two methods:
 
     This will update the script where it is installed.
 
-    <strong>If you use the this flag without actually installing the script,</strong>
+    ***If you use the this flag without actually installing the script,***
 
-    <strong>e.g just by `sh upload.sh -u` then it will install the script or update if already installed.</strong>
+    ***e.g just by `sh upload.sh -u` then it will install the script or update if already installed.***
 
-1.  Run the installation script again.
+2.  Run the installation script again.
 
     Yes, just run the installation script again as we did in install section, and voila, it's done.
 
-1.  Automatic updates
+3.  Automatic updates
 
     By default, script checks for update after 5 days. Use -t / --time flag of install.sh to modify the interval.
 
