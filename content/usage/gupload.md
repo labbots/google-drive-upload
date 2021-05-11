@@ -8,7 +8,9 @@ weight : 1
 
 For uploading files/remote gdrive files, the syntax is simple;
 
-`gupload filename/foldername/file_id/file_link -c gdrive_folder_name`
+```shell
+gupload filename/foldername/file_id/file_link -c gdrive_folder_name
+```
 
 where `filename/foldername` is input file/folder and `gdrive_folder_name` is the name of the folder on gdrive, where the input file/folder will be uploaded.
 
@@ -32,7 +34,9 @@ These are the custom flags that are currently implemented:
 
     If you want to change the default value of the config path, then use this format,
 
-    `gupload --config default=your_config_file_path`
+    ```shell
+    gupload --config default=your_config_file_path
+    ```
 
     ---
 
@@ -42,7 +46,9 @@ These are the custom flags that are currently implemented:
 
     To change the default account name, do
 
-    `gupload -a/--account default=account_name`
+    ```shell
+    gupload -a/--account default=account_name
+    ```
 
     ---
 
@@ -82,7 +88,9 @@ These are the custom flags that are currently implemented:
 
     If you want to change the default value of the rootdir stored in config, then use this format,
 
-    `gupload --root-dir default=root_folder_[id/url]`
+    ```shell
+    gupload --root-dir default=root_folder_[id/url]
+    ```
 
     ---
 
