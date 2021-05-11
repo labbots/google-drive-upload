@@ -8,7 +8,7 @@ weight : 4
 
 After first run, the credentials are saved in config file. By default, the config file is `${HOME}/.googledrive.conf`.
 
-To change the default config file or use a different one temporarily, see `-z / --config` custom in [Upload Script Custom Flags](#upload-script-custom-flags).
+To change the default config file or use a different one temporarily, see `-z / --config` custom in [Upload Script Custom Flags](/usage/gupload/#upload-script-custom-flags).
 
 This is the format of a config file:
 
