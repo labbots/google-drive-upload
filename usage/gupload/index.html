@@ -12,21 +12,21 @@
     <title>Gupload Script :: Google Drive Upload</title>
 
     
-    <link href="https://labbots.github.io/google-drive-upload/css/nucleus.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/fontawesome-all.min.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/hybrid.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/featherlight.min.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/perfect-scrollbar.min.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/auto-complete.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/atom-one-dark-reasonable.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/theme.css?1620722374" rel="stylesheet">
-    <link href="https://labbots.github.io/google-drive-upload/css/hugo-theme.css?1620722374" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/nucleus.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/fontawesome-all.min.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/hybrid.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/featherlight.min.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/perfect-scrollbar.min.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/auto-complete.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/atom-one-dark-reasonable.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/theme.css?1620730251" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/hugo-theme.css?1620730251" rel="stylesheet">
     
-    <link href="https://labbots.github.io/google-drive-upload/css/theme-blue.css?1620722374" rel="stylesheet">
+    <link href="https://labbots.github.io/google-drive-upload/css/theme-blue.css?1620730251" rel="stylesheet">
     
     
 
-    <script src="https://labbots.github.io/google-drive-upload/js/jquery-3.3.1.min.js?1620722374"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/jquery-3.3.1.min.js?1620730251"></script>
 
     <style>
       :root #header + #content > #left > #rlblock_left{
@@ -236,14 +236,14 @@
     <span data-search-clear=""><i class="fas fa-times"></i></span>
 </div>
 
-<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/lunr.min.js?1620722374"></script>
-<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/auto-complete.js?1620722374"></script>
+<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/lunr.min.js?1620730251"></script>
+<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/auto-complete.js?1620730251"></script>
 <script type="text/javascript">
     
         var baseurl = "https:\/\/labbots.github.io\/google-drive-upload\/";
     
 </script>
-<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/search.js?1620722374"></script>
+<script type="text/javascript" src="https://labbots.github.io/google-drive-upload/js/search.js?1620730251"></script>
 
     
   </div>
@@ -675,8 +675,8 @@
 
 
 <p>For uploading files/remote gdrive files, the syntax is simple;</p>
-<p><code>gupload filename/foldername/file_id/file_link -c gdrive_folder_name</code></p>
-<p>where <code>filename/foldername</code> is input file/folder and <code>gdrive_folder_name</code> is the name of the folder on gdrive, where the input file/folder will be uploaded.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-shell" data-lang="shell">gupload filename/foldername/file_id/file_link -c gdrive_folder_name
+</code></pre></div><p>where <code>filename/foldername</code> is input file/folder and <code>gdrive_folder_name</code> is the name of the folder on gdrive, where the input file/folder will be uploaded.</p>
 <p>and <code>file_id/file_link</code> is the accessible gdrive file link or id which will be uploaded without downloading.</p>
 <p>If <code>gdrive_folder_name</code> is present on gdrive, then script will upload there, else will make a folder with that name.</p>
 <p>Note: It&rsquo;s not mandatory to use -c / -C / &ndash;create-dir flag.</p>
@@ -689,15 +689,15 @@
 <p>Override default config file with custom config file.</p>
 <p>Default Config: <code>${HOME}/.googledrive.conf</code></p>
 <p>If you want to change the default value of the config path, then use this format,</p>
-<p><code>gupload --config default=your_config_file_path</code></p>
-<hr>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-shell" data-lang="shell">gupload --config default<span style="color:#f92672">=</span>your_config_file_path
+</code></pre></div><hr>
 </li>
 <li>
 <p><strong>-a | &ndash;account &lsquo;account name&rsquo;</strong></p>
 <p>Use different account than the default one.</p>
 <p>To change the default account name, do</p>
-<p><code>gupload -a/--account default=account_name</code></p>
-<hr>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-shell" data-lang="shell">gupload -a/--account default<span style="color:#f92672">=</span>account_name
+</code></pre></div><hr>
 </li>
 <li>
 <p><strong>-la | &ndash;list-accounts</strong></p>
@@ -726,8 +726,8 @@
 <p><strong>-r | &ndash;root-dir &lt;google_folderid&gt;</strong></p>
 <p>Google folder id or url to which the file/directory to upload.</p>
 <p>If you want to change the default value of the rootdir stored in config, then use this format,</p>
-<p><code>gupload --root-dir default=root_folder_[id/url]</code></p>
-<hr>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-shell" data-lang="shell">gupload --root-dir default<span style="color:#f92672">=</span>root_folder_<span style="color:#f92672">[</span>id/url<span style="color:#f92672">]</span>
+</code></pre></div><hr>
 </li>
 <li>
 <p><strong>-s | &ndash;skip-subdirs</strong></p>
@@ -1162,19 +1162,19 @@ Mime Type: %m</p>
     <div style="left: -1000px; overflow: scroll; position: absolute; top: -1000px; border: none; box-sizing: content-box; height: 200px; margin: 0px; padding: 0px; width: 200px;">
       <div style="border: none; box-sizing: content-box; height: 200px; margin: 0px; padding: 0px; width: 200px;"></div>
     </div>
-    <script src="https://labbots.github.io/google-drive-upload/js/clipboard.min.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.min.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.jquery.min.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/jquery.sticky.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/featherlight.min.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/highlight.pack.js?1620722374"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/clipboard.min.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.min.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/perfect-scrollbar.jquery.min.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/jquery.sticky.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/featherlight.min.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/highlight.pack.js?1620730251"></script>
     <script>hljs.initHighlightingOnLoad();</script>
-    <script src="https://labbots.github.io/google-drive-upload/js/modernizr.custom-3.6.0.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/learn.js?1620722374"></script>
-    <script src="https://labbots.github.io/google-drive-upload/js/hugo-learn.js?1620722374"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/modernizr.custom-3.6.0.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/learn.js?1620730251"></script>
+    <script src="https://labbots.github.io/google-drive-upload/js/hugo-learn.js?1620730251"></script>
     
         
-            <script src="https://labbots.github.io/google-drive-upload/mermaid/mermaid.js?1620722374"></script>
+            <script src="https://labbots.github.io/google-drive-upload/mermaid/mermaid.js?1620730251"></script>
         
         <script>
             mermaid.initialize({ startOnLoad: true });

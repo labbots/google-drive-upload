@@ -14,8 +14,7 @@
       
       <guid>https://labbots.github.io/google-drive-upload/usage/gupload/</guid>
       <description>For uploading files/remote gdrive files, the syntax is simple;
-gupload filename/foldername/file_id/file_link -c gdrive_folder_name
-where filename/foldername is input file/folder and gdrive_folder_name is the name of the folder on gdrive, where the input file/folder will be uploaded.
+gupload filename/foldername/file_id/file_link -c gdrive_folder_name where filename/foldername is input file/folder and gdrive_folder_name is the name of the folder on gdrive, where the input file/folder will be uploaded.
 and file_id/file_link is the accessible gdrive file link or id which will be uploaded without downloading.
 If gdrive_folder_name is present on gdrive, then script will upload there, else will make a folder with that name.</description>
     </item>
