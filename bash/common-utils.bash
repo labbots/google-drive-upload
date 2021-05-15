@@ -192,24 +192,27 @@ _get_latest_sha() {
 ###################################################
 # Encode the given string to parse properly as json
 # Globals: None
-# Arguments: 1
-#   ${1} = string
-# Result: print encoded string
+# Arguments: 2
+#   ${1} = json or something else
+#   ${2} = input
+# Result: if ${1} is j, then escape all chars, else only special chars
 # Reference:
 #   https://tools.ietf.org/html/rfc7159#section-7
 ###################################################
 _json_escape() {
-    declare input="${1:?Provide Input}"
-    # \ and /
-    : "${input//\\/\\\\}"
-    : "${_//\//\\\/}"
-    : "${_//\'/\\\'}"    # ' (not strictly needed ?)
-    : "${_//\"/\\\"}"    # "
-    : "${_//$'\t'/\\\t}" # \t (tab)
-    : "${_//$'\n'/\\\n}" # \n (newline)
-    : "${_//$'\r'/\\\r}" # \r (carriage return)
-    : "${_//$'\f'/\\\f}" # \f (form feed)
-    : "${_//$'\b'/\\\b}" # \b (backspace)
+    declare mode="${1:?}" input="${2:?Provide Input}"
+    [[ ${mode} = "j" ]] && {
+        # \ and /
+        : "${input//\\/\\\\}"
+        : "${_//\//\\\/}"
+        # : "${_//\'/\\\'}"    # ' (not strictly needed ?)
+        input="${_//\"/\\\"}" # "
+    }
+    : "${input//$'\t'/\\\t}" # \t (tab)
+    : "${_//$'\n'/\\\n}"     # \n (newline)
+    : "${_//$'\r'/\\\r}"     # \r (carriage return)
+    : "${_//$'\f'/\\\f}"     # \f (form feed)
+    : "${_//$'\b'/\\\b}"     # \b (backspace)
     printf "%s" "${_}"
 }
 
