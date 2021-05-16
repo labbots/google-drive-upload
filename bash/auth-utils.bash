@@ -214,7 +214,7 @@ _check_credentials() {
                 else
                     "${QUIET:-_print_center}" "normal" " Above accounts are configured, but default one not set. " "="
                     if [[ -t 1 ]]; then
-                        \  "${QUIET:-_print_center}" "normal" " Choose default account: " "-"
+                        "${QUIET:-_print_center}" "normal" " Choose default account: " "-"
                         until [[ -n ${ACCOUNT_NAME} ]]; do
                             printf -- "-> \e[?7l"
                             read -r account_name
