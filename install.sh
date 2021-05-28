@@ -53,7 +53,7 @@ _check_debug() {
         if [ -z "${QUIET}" ]; then
             # check if running in terminal and support ansi escape sequences
             case "${TERM}" in
-                xterm* | rxvt* | urxvt* | linux* | vt* | screen*) ansi_escapes="true" ;;
+                xterm* | rxvt* | urxvt* | linux* | vt* | screen* | st*) ansi_escapes="true" ;;
             esac
             if [ -t 2 ] && [ -n "${ansi_escapes}" ]; then
                 ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2>| /dev/null &&
