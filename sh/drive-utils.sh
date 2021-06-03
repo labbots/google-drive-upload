@@ -5,26 +5,37 @@
 # Globals: 3 variables, 2 functions
 #   Variables - API_URL, API_VERSION, ACCESS_TOKEN
 #   Functions - _url_encode, _json_value
-# Arguments: 2
+# Arguments: 4
 #   ${1} = file name
 #   ${2} = root dir id of file
-# Result: print file id else blank
+#   ${3} = mode ( size or md5Checksum or empty )
+#   ${4} = if mode = empty, then not required
+#             mode = size, then size
+#             mode = md5Checksum, then md5sum
+# Result: print search response if id fetched
+#         check size and md5sum if mode size or md5Checksum
 # Reference:
 #   https://developers.google.com/drive/api/v3/search-files
 ###################################################
 _check_existing_file() (
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
-    name_check_existing_file="${1##*/}" rootdir_check_existing_file="${2}"
+    name_check_existing_file="${1}" rootdir_check_existing_file="${2}" mode_check_existing_file="${3}" param_value_check_existing_file="${4}"
     unset query_check_existing_file response_check_existing_file id_check_existing_file
 
     "${EXTRA_LOG}" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
     query_check_existing_file="$(_url_encode "name=\"${name_check_existing_file}\" and '${rootdir_check_existing_file}' in parents and trashed=false and 'me' in writers")"
 
     response_check_existing_file="$(_api_request "${CURL_PROGRESS_EXTRA}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query_check_existing_file}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files?q=${query_check_existing_file}&fields=files(id,name,mimeType${mode_check_existing_file:+,${mode_check_existing_file}})&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
-    { printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2>| /dev/null 1>&2 && printf "%s\n" "${response_check_existing_file}"; } || return 1
+    printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2>| /dev/null 1>&2 || return 1
+
+    [ -n "${mode_check_existing_file}" ] && {
+        [ "$(printf "%s\n" "${response_check_existing_file}" | _json_value "${mode_check_existing_file}" 1 1)" = "${param_value_check_existing_file}" ] || return 1
+    }
+
+    printf "%s\n" "${response_check_existing_file}"
     return 0
 )
 
@@ -39,6 +50,7 @@ _check_existing_file() (
 #   ${3} = root dir id for file
 #   ${4} = name of file
 #   ${5} = size of file
+#   ${6} = md5sum of file
 # Result: On
 #   Success - Upload/Update file and export FILE_ID
 #   Error - return 1
@@ -47,7 +59,7 @@ _check_existing_file() (
 ###################################################
 _clone_file() {
     [ $# -lt 5 ] && printf "Missing arguments\n" && return 1
-    job_clone_file="${1}" file_id_clone_file="${2}" file_root_id_clone_file="${3}" name_clone_file="${4}" size_clone_file="${5}"
+    job_clone_file="${1}" file_id_clone_file="${2}" file_root_id_clone_file="${3}" name_clone_file="${4}" size_clone_file="${5}" md5_clone_file="${6}"
     unset post_data_clone_file response_clone_file readable_size_clone_file description_clone_file && STRING="Cloned"
     readable_size_clone_file="$(printf "%s\n" "${size_clone_file}" | _bytes_to_human)"
     escaped_name_clone_file="$(_json_escape j "${name_clone_file}")" print_name_clone_file="$(_json_escape p "${name_clone_file}")"
@@ -63,9 +75,13 @@ _clone_file() {
     _print_center "justify" "${print_name_clone_file} " "| ${readable_size_clone_file}" "="
 
     if [ "${job_clone_file}" = update ]; then
-        unset file_check_json_clone_file
+        unset file_check_json_clone_file check_value_type_clone_file check_value_clone_file
+        case "${CHECK_MODE}" in
+            2) check_value_type_clone_file="size" check_value_clone_file="${size_clone_file}" ;;
+            3) check_value_type_clone_file="md5Checksum" check_value_clone_file="${md5_clone_file}" ;;
+        esac
         # Check if file actually exists.
-        if file_check_json_clone_file="$(_check_existing_file "${escaped_name_clone_file}" "${file_root_id_clone_file}")"; then
+        if file_check_json_clone_file="$(_check_existing_file "${escaped_name_clone_file}" "${file_root_id_clone_file}" "${check_value_type_clone_file}" "${check_value_clone_file}")"; then
             if [ -n "${SKIP_DUPLICATES}" ]; then
                 _collect_file_info "${file_check_json_clone_file}" "${print_name_clone_file}" || return 1
                 _clear_line 1
@@ -195,7 +211,7 @@ _extract_id() {
 # Interrupted uploads can be resumed.
 # Globals: 8 variables, 11 functions
 #   Variables - API_URL, API_VERSION, QUIET, VERBOSE, VERBOSE_PROGRESS, CURL_PROGRESS, LOG_FILE_ID, ACCESS_TOKEN, DESCRIPTION_FILE
-#   Functions - _url_encode, _json_value, _json_escape, _print_center, _bytes_to_human
+#   Functions - _url_encode, _json_value, _json_escape, _print_center, _bytes_to_human, _check_existing_file
 #               _generate_upload_link, _upload_file_from_uri, _log_upload_session, _remove_upload_session
 #               _full_upload, _collect_file_info
 # Arguments: 3
@@ -242,9 +258,20 @@ _upload_file() {
 
     # Set proper variables for overwriting files
     [ "${job_upload_file}" = update ] && {
-        unset file_check_json_upload_file
+        unset file_check_json_upload_file check_value_upload_file
+        case "${CHECK_MODE}" in
+            2) check_value_type_upload_file="size" check_value_upload_file="${inputsize_upload_file}" ;;
+            3)
+                check_value_type_upload_file="md5Checksum"
+                check_value_upload_file="$(md5sum "${input_upload_file}")" || {
+                    "${QUIET:-_print_center}" "justify" "Error: cannot calculate md5sum of given file." "=" 1>&2
+                    return 1
+                }
+                check_value_upload_file="${check_value_upload_file%% *}"
+                ;;
+        esac
         # Check if file actually exists, and create if not.
-        if file_check_json_upload_file="$(_check_existing_file "${escaped_slug_upload_file}" "${folder_id_upload_file}")"; then
+        if file_check_json_upload_file="$(_check_existing_file "${escaped_slug_upload_file}" "${folder_id_upload_file}" "${check_value_type_upload_file}" "${check_value_upload_file}")"; then
             if [ -n "${SKIP_DUPLICATES}" ]; then
                 # Stop upload if already exists ( -d/--skip-duplicates )
                 _collect_file_info "${file_check_json_upload_file}" "${print_slug_upload_file}" || return 1

@@ -22,11 +22,12 @@ Options:\n
   -f | --[file|folder] - Specify files and folders explicitly in one command, use multiple times for multiple folder/files. See README for more use of this command.\n
   -cl | --clone - Upload a gdrive file without downloading, require accessible gdrive link or id as argument.\n
   -o | --overwrite - Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders.\n
+  -d | --skip-duplicates - Do not upload the files with the same name and size, if already present in the root folder/input folder, also works with recursive folders.\n
+  -cm | --check-mode - Additional flag for --overwrite and --skip-duplicates flag. Can be used to change check mode in those flags, available args are 'size' and 'md5'.\n
   -desc | --description | --description-all - Specify description for the given file. To use the respective metadata of a file, below is the format:\n
          File name ( fullname ): %f | Size: %s | Mime Type: %m\n
          Now to actually use it: --description 'Filename: %f, Size: %s, Mime: %m'\n
          Note: For files inside folders, use --description-all flag.\n
-  -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
   -SM | -sm | --share-mode 'share mode' - Specify the share mode for sharing file.\n
         Share modes are: r / reader - Read only permission.\n
@@ -125,7 +126,7 @@ _setup_arguments() {
     # De-initialize if any variables set already.
     unset LIST_ACCOUNTS UPDATE_DEFAULT_ACCOUNT CUSTOM_ACCOUNT_NAME NEW_ACCOUNT_NAME DELETE_ACCOUNT_NAME ACCOUNT_ONLY_RUN
     unset FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY CONTINUE_WITH_NO_INPUT
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_ROLE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES DESCRIPTION SKIP_SUBDIRS ROOTDIR QUIET
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_ROLE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES CHECK_MODE DESCRIPTION SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
     export CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
@@ -208,6 +209,14 @@ _setup_arguments() {
                 ;;
             -o | --overwrite) export OVERWRITE="Overwrite" UPLOAD_MODE="update" ;;
             -d | --skip-duplicates) export SKIP_DUPLICATES="Skip Existing" UPLOAD_MODE="update" ;;
+            -cm | --check-mode)
+                _check_longoptions "${1}" "${2}"
+                case "${2}" in
+                    size) export CHECK_MODE="2" && shift ;;
+                    md5) export CHECK_MODE="3" && shift ;;
+                    *) printf "\nError: -cm/--check-mode takes size and md5 as argument.\n" ;;
+                esac
+                ;;
             -desc | --description | --description-all)
                 _check_longoptions "${1}" "${2}"
                 [[ ${1} = "--description-all" ]] && export DESCRIPTION_ALL="true"
@@ -334,6 +343,15 @@ _setup_arguments() {
         [[ -n ${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-}} ]] && exit 0
         # don't exit right away when new account is created but also let the rootdir stuff execute
         [[ -n ${NEW_ACCOUNT_NAME} ]] && CONTINUE_WITH_NO_INPUT="true"
+    }
+
+    # set CHECK_MODE if empty, below are check mode values
+    # 1 = check only name, 2 = check name and size, 3 = check name and md5sum
+    [[ -z ${CHECK_MODE} ]] && {
+        case "${SKIP_DUPLICATES:-${OVERWRITE}}" in
+            "Overwrite") export CHECK_MODE="1" ;;
+            "Skip Existing") export CHECK_MODE="2" ;;
+        esac
     }
 
     return 0
@@ -580,11 +598,13 @@ _process_arguments() {
         { [[ ${Aseen[${gdrive_id}]} ]] && continue; } || Aseen[${gdrive_id}]=x
         _print_center "justify" "Given Input" ": ID" "="
         "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
-        json="$(_drive_info "${gdrive_id}" "name,mimeType,size" || :)"
+        [[ ${CHECK_MODE} = "md5Checksum" ]] && declare param="md5Checksum"
+        json="$(_drive_info "${gdrive_id}" "name,mimeType,size${param:+,${param}}" || :)"
         if ! _json_value code 1 1 <<< "${json}" 2>| /dev/null 1>&2; then
             type="$(_json_value mimeType 1 1 <<< "${json}" || :)"
             name="$(_json_value name 1 1 <<< "${json}" || :)"
             size="$(_json_value size 1 1 <<< "${json}" || :)"
+            [[ ${CHECK_MODE} = "md5Checksum" ]] && md5="$(_json_value md5Checksum 1 1 <<< "${json}" || :)"
             for _ in 1 2; do _clear_line 1; done
             if [[ ${type} =~ folder ]]; then
                 # export DESCRIPTION_FILE only if DESCRIPTION_ALL var is available, used for descriptions in _clone_file function
@@ -598,7 +618,7 @@ _process_arguments() {
 
                 _print_center "justify" "Given Input" ": File ID" "="
                 _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
-                _clone_file "${UPLOAD_MODE:-create}" "${gdrive_id}" "${WORKSPACE_FOLDER_ID}" "${name}" "${size}" ||
+                _clone_file "${UPLOAD_MODE:-create}" "${gdrive_id}" "${WORKSPACE_FOLDER_ID}" "${name}" "${size}" "${md5}" ||
                     { for _ in 1 2; do _clear_line 1; done && continue; }
             fi
             _share_and_print_link "${FILE_ID}"
