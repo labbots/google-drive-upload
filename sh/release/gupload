@@ -184,19 +184,17 @@ _json_escape() {
     # just for refrence "s|'|\'|g"
     if [ "${mode_json_escape}" = "j" ]; then
         output_json_escape="$(printf "%s" "${input_json_escape}" | sed \
-            -e "s|'\'|'\\'|g" \
-            -e "s|'/'|'\/'|g" \
+            -e "s|\\\|\\\\\\\|g" \
+            -e "s|\/|\\\/|g" \
             -e 's/\"/\\\"/g' \
-            -e ':a; $!N' \
-            -e 's|\t|\\t|g' \
-            -e 's|\r|\\r|g' \
-            -e 's|\f|\\f|g')"
+            -e "s/$(printf '\t')/\\t/g" \
+            -e "s/$(printf '\r')/\\r/g" \
+            -e "s/$(printf '\f')/\\f/g")"
     else
         output_json_escape="$(printf "%s" "${input_json_escape}" | sed \
-            -e ':a; $!N' \
-            -e 's|\t|\\t|g' \
-            -e 's|\r|\\r|g' \
-            -e 's|\f|\\f|g')"
+            -e "s/$(printf '\t')/\\t/g" \
+            -e "s/$(printf '\r')/\\r/g" \
+            -e "s/$(printf '\f')/\\f/g")"
     fi
     # use awk because sed just messes up with newlines
     output_json_escape="$(printf "%s" "${output_json_escape}" | awk '{printf "%s%s",sep,$0; sep="\\n"} END{print ""}')"
