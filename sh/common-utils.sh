@@ -302,10 +302,9 @@ _print_center_quiet() {
 # Result: export value1=value2
 ###################################################
 _set_value() {
-    mode_set_value="${1:?}" var_set_value="${2:?}" value_set_value="${3:?}"
-    case "${mode_set_value}" in
-        d | direct) export "${var_set_value}=${value_set_value}" ;;
-        i | indirect) export "${var_set_value}=$(eval printf "%s" \"\$"${value_set_value}"\")" ;;
+    case "${1:?}" in
+        d | direct) export "${2:?}=${3}" ;;
+        i | indirect) export "${2:?}=$(eval printf "%s" \"\$"${3}"\")" ;;
     esac
 }
 

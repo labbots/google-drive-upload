@@ -317,10 +317,9 @@ _print_center_quiet() {
 # Result: export value1=value2
 ###################################################
 _set_value() {
-    declare mode="${1:?}" var="${2:?}" value="${3:?}"
-    case "${mode}" in
-        d | direct) export "${var}=${value}" ;;
-        i | indirect) export "${var}=${!value}" ;;
+    case "${1:?}" in
+        d | direct) export "${2:?}=${3}" ;;
+        i | indirect) export "${2:?}=${!3}" ;;
     esac
 }
 
