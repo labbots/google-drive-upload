@@ -89,7 +89,7 @@ _check_internet() {
 # Result: Read description
 ###################################################
 _clear_line() {
-    printf "\e[%sA\e[2K" "${1}"
+    printf "\033[%sA\033[2K" "${1}"
 }
 
 ###################################################
@@ -479,9 +479,9 @@ _set_new_account_name() {
             fi
         else
             [ -t 1 ] || { "${QUIET:-_print_center}" "normal" " Error: Not running in an interactive terminal, cannot ask for new account name. " 1>&2 && return 1; }
-            printf -- "-> \e[?7l"
+            printf -- "-> \033[?7l"
             read -r new_account_name_set_new_account_name
-            printf '\e[?7h'
+            printf '\033[?7h'
         fi
         _clear_line 1
     done
@@ -601,9 +601,9 @@ _check_credentials() {
                     if [ -t 1 ]; then
                         "${QUIET:-_print_center}" "normal" " Choose default account: " "-"
                         until [ -n "${ACCOUNT_NAME}" ]; do
-                            printf -- "-> \e[?7l"
+                            printf -- "-> \033[?7l"
                             read -r account_name_check_credentials
-                            printf '\e[?7h'
+                            printf '\033[?7h'
                             if [ "${account_name_check_credentials}" -gt 0 ] && [ "${account_name_check_credentials}" -le "${COUNT}" ]; then
                                 _set_value indirect ACCOUNT_NAME "ACC_${COUNT}_ACC"
                             else
@@ -753,9 +753,9 @@ _check_refresh_token() {
                     fi
                 }
                 { [ -z "${authorization_code}" ] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
-                printf -- "-> \e[?7l"
+                printf -- "-> \033[?7l"
                 read -r AUTHORIZATION_CODE && authorization_code=1
-                printf '\e[?7h'
+                printf '\033[?7h'
             done
             response_check_refresh_token="$(curl --compressed "${CURL_PROGRESS}" -X POST \
                 --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
@@ -1971,7 +1971,7 @@ _process_arguments() {
         case "${Aseen}" in
             *"|:_//_:|${input}|:_//_:|"*) continue ;;
             *) Aseen="${Aseen}|:_//_:|${input}|:_//_:|" ;;
-        esac; do
+        esac do
         # Check if the argument is a file or a directory.
         if [ -f "${input}" ]; then
             # export DESCRIPTION_FILE, used for descriptions in _upload_file function
@@ -2112,7 +2112,7 @@ EOF
         case "${Aseen}" in
             *"|:_//_:|${gdrive_id}|:_//_:|"*) continue ;;
             *) Aseen="${Aseen}|:_//_:|${gdrive_id}|:_//_:|" ;;
-        esac; do
+        esac do
         _print_center "justify" "Given Input" ": ID" "="
         "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
         [ "${CHECK_MODE}" = "md5Checksum" ] && param="md5Checksum"
@@ -2177,7 +2177,7 @@ main() {
 
     _cleanup() {
         # unhide the cursor if hidden
-        [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\e[?25h\e[?7h"
+        [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\033[?25h\033[?7h"
         {
             # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
             [ -f "${TMPFILE}_ACCESS_TOKEN" ] && {
@@ -2243,7 +2243,7 @@ main() {
     "${HIDE_INFO:-_print_center}" "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
 
     # hide the cursor if ansi escapes are supported
-    [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\e[?25l"
+    [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\033[?25l"
 
     _process_arguments
 

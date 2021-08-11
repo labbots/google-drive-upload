@@ -91,9 +91,9 @@ _set_new_account_name() {
             fi
         else
             [[ -t 1 ]] || { "${QUIET:-_print_center}" "normal" " Error: Not running in an interactive terminal, cannot ask for new account name. " 1>&2 && return 1; }
-            printf -- "-> \e[?7l"
+            printf -- "-> \033[?7l"
             read -r new_account_name
-            printf '\e[?7h'
+            printf '\033[?7h'
         fi
         _clear_line 1
     done
@@ -216,9 +216,9 @@ _check_credentials() {
                     if [[ -t 1 ]]; then
                         "${QUIET:-_print_center}" "normal" " Choose default account: " "-"
                         until [[ -n ${ACCOUNT_NAME} ]]; do
-                            printf -- "-> \e[?7l"
+                            printf -- "-> \033[?7l"
                             read -r account_name
-                            printf '\e[?7h'
+                            printf '\033[?7h'
                             if [[ ${account_name} -gt 0 && ${account_name} -le ${COUNT} ]]; then
                                 _set_value indirect ACCOUNT_NAME "ACC_${COUNT}_ACC"
                             else
@@ -368,9 +368,9 @@ _check_refresh_token() {
                     fi
                 }
                 { [[ -z ${authorization_code} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
-                printf -- "-> \e[?7l"
+                printf -- "-> \033[?7l"
                 read -r AUTHORIZATION_CODE && authorization_code=1
-                printf '\e[?7h'
+                printf '\033[?7h'
             done
             response="$(curl --compressed "${CURL_PROGRESS}" -X POST \
                 --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :

@@ -232,7 +232,7 @@ EOF
             case "${aseen_check_and_upload}" in
                 *"|:_//_:|${new_file_check_and_upload}|:_//_:|"*) continue ;;
                 *) aseen_check_and_upload="${aseen_check_and_upload}|:_//_:|${new_file_check_and_upload}|:_//_:|" ;;
-            esac; do
+            esac do
             if eval "\"${COMMAND_PATH}\"" "\"${new_file_check_and_upload}\"" "${ARGS}"; then
                 printf "%s\n" "${new_file_check_and_upload}" >> "${SUCCESS_LOG}"
             else
@@ -348,7 +348,7 @@ _do_job() {
                 case "${Aseen}" in
                     *"|:_//_:|${pid}|:_//_:|"*) continue ;;
                     *) Aseen="${Aseen}|:_//_:|${pid}|:_//_:|" ;;
-                esac; do
+                esac do
                 case "${JOB_TYPE}" in
                     *INFO*)
                         _get_job_info "${pid}" more
@@ -740,7 +740,7 @@ _process_arguments() {
         case "${Aseen}" in
             *"|:_//_:|${INPUT}|:_//_:|"*) continue ;;
             *) Aseen="${Aseen}|:_//_:|${INPUT}|:_//_:|" ;;
-        esac; do
+        esac do
         ! [ -d "${INPUT}" ] && printf "\nError: Invalid Input ( %s ), no such directory.\n" "${INPUT}" && continue
         current_folder_process_arguments="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1

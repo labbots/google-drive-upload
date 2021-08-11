@@ -34,7 +34,7 @@ _check_debug
 
 _cleanup() {
     # unhide the cursor if hidden
-    [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\e[?25h\e[?7h"
+    [[ -n ${SUPPORT_ANSI_ESCAPES} ]] && printf "\033[?25h\033[?7h"
     {
         # grab all script children pids
         script_children_pids="$(ps --ppid="${MAIN_PID}" -o pid=)"

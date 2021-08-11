@@ -480,7 +480,7 @@ _process_arguments() {
         case "${Aseen}" in
             *"|:_//_:|${input}|:_//_:|"*) continue ;;
             *) Aseen="${Aseen}|:_//_:|${input}|:_//_:|" ;;
-        esac; do
+        esac do
         # Check if the argument is a file or a directory.
         if [ -f "${input}" ]; then
             # export DESCRIPTION_FILE, used for descriptions in _upload_file function
@@ -621,7 +621,7 @@ EOF
         case "${Aseen}" in
             *"|:_//_:|${gdrive_id}|:_//_:|"*) continue ;;
             *) Aseen="${Aseen}|:_//_:|${gdrive_id}|:_//_:|" ;;
-        esac; do
+        esac do
         _print_center "justify" "Given Input" ": ID" "="
         "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
         [ "${CHECK_MODE}" = "md5Checksum" ] && param="md5Checksum"
@@ -686,7 +686,7 @@ main() {
 
     _cleanup() {
         # unhide the cursor if hidden
-        [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\e[?25h\e[?7h"
+        [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\033[?25h\033[?7h"
         {
             # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
             [ -f "${TMPFILE}_ACCESS_TOKEN" ] && {
@@ -752,7 +752,7 @@ main() {
     "${HIDE_INFO:-_print_center}" "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
 
     # hide the cursor if ansi escapes are supported
-    [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\e[?25l"
+    [ -n "${SUPPORT_ANSI_ESCAPES}" ] && printf "\033[?25l"
 
     _process_arguments
 
