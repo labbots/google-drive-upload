@@ -488,16 +488,15 @@ _token_bg_service() {
     return 0
 }
 
-ALL_FUNCTIONS=(_account_name_valid
-    _account_exists
-    _all_accounts
-    _set_new_account_name
-    _delete_account
-    _handle_old_config
-    _check_credentials
-    _check_account_credentials
-    _check_client
-    _check_refresh_token
-    _check_access_token
-    _reload_config)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _account_name_valid \
+    _account_exists \
+    _all_accounts \
+    _set_new_account_name \
+    _delete_account \
+    _handle_old_config \
+    _check_credentials \
+    _check_account_credentials \
+    _check_client \
+    _check_refresh_token \
+    _check_access_token \
+    _reload_config

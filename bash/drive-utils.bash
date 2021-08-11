@@ -439,17 +439,16 @@ _share_id() {
         { printf "%s\n" "Error: Cannot Share." 1>&2 && printf "%s\n" "${share_response}" 1>&2 && return 1; }
 }
 
-ALL_FUNCTIONS=(_check_existing_file
-    _clone_file
-    _create_directory
-    _drive_info
-    _extract_id
-    _upload_file
-    _generate_upload_link
-    _upload_file_from_uri
-    _normal_logging_upload
-    _log_upload_session
-    _remove_upload_session
-    _full_upload
-    _share_id)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _check_existing_file \
+    _clone_file \
+    _create_directory \
+    _drive_info \
+    _extract_id \
+    _upload_file \
+    _generate_upload_link \
+    _upload_file_from_uri \
+    _normal_logging_upload \
+    _log_upload_session \
+    _remove_upload_session \
+    _full_upload \
+    _share_id

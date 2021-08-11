@@ -405,25 +405,24 @@ _url_encode() {
     printf '\n'
 }
 
-ALL_FUNCTIONS=(_bytes_to_human
-    _check_bash_version
-    _check_debug
-    _check_internet
-    _clear_line
-    _count
-    _dirname
-    _display_time
-    _get_latest_sha
-    _json_escape
-    _json_value
-    _print_center
-    _print_center_quiet
-    _set_value
-    _support_ansi_escapes
-    _timeout
-    _update_config
-    _url_encode)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _bytes_to_human \
+    _check_bash_version \
+    _check_debug \
+    _check_internet \
+    _clear_line \
+    _count \
+    _dirname \
+    _display_time \
+    _get_latest_sha \
+    _json_escape \
+    _json_value \
+    _print_center \
+    _print_center_quiet \
+    _set_value \
+    _support_ansi_escapes \
+    _timeout \
+    _update_config \
+    _url_encode
 # auth utils for Google Drive
 # shellcheck source=/dev/null
 
@@ -913,19 +912,18 @@ _token_bg_service() {
     return 0
 }
 
-ALL_FUNCTIONS=(_account_name_valid
-    _account_exists
-    _all_accounts
-    _set_new_account_name
-    _delete_account
-    _handle_old_config
-    _check_credentials
-    _check_account_credentials
-    _check_client
-    _check_refresh_token
-    _check_access_token
-    _reload_config)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _account_name_valid \
+    _account_exists \
+    _all_accounts \
+    _set_new_account_name \
+    _delete_account \
+    _handle_old_config \
+    _check_credentials \
+    _check_account_credentials \
+    _check_client \
+    _check_refresh_token \
+    _check_access_token \
+    _reload_config
 
 ###################################################
 # Search for an existing file on gdrive with write permission.
@@ -1366,20 +1364,19 @@ _share_id() {
         { printf "%s\n" "Error: Cannot Share." 1>&2 && printf "%s\n" "${share_response}" 1>&2 && return 1; }
 }
 
-ALL_FUNCTIONS=(_check_existing_file
-    _clone_file
-    _create_directory
-    _drive_info
-    _extract_id
-    _upload_file
-    _generate_upload_link
-    _upload_file_from_uri
-    _normal_logging_upload
-    _log_upload_session
-    _remove_upload_session
-    _full_upload
-    _share_id)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _check_existing_file \
+    _clone_file \
+    _create_directory \
+    _drive_info \
+    _extract_id \
+    _upload_file \
+    _generate_upload_link \
+    _upload_file_from_uri \
+    _normal_logging_upload \
+    _log_upload_session \
+    _remove_upload_session \
+    _full_upload \
+    _share_id
 # shellcheck source=/dev/null
 
 ###################################################
@@ -1549,13 +1546,12 @@ _upload_folder() {
     return 0
 }
 
-ALL_FUNCTIONS=(_api_request
-    _collect_file_info
-    _error_logging_upload
-    _get_rootdir_id
-    _upload_file_main
-    _upload_folder)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _api_request \
+    _collect_file_info \
+    _error_logging_upload \
+    _get_rootdir_id \
+    _upload_file_main \
+    _upload_folder
 # Upload a file to Google Drive
 # shellcheck source=/dev/null
 

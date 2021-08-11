@@ -168,10 +168,9 @@ _upload_folder() {
     return 0
 }
 
-ALL_FUNCTIONS=(_api_request
-    _collect_file_info
-    _error_logging_upload
-    _get_rootdir_id
-    _upload_file_main
-    _upload_folder)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _api_request \
+    _collect_file_info \
+    _error_logging_upload \
+    _get_rootdir_id \
+    _upload_file_main \
+    _upload_folder

@@ -405,25 +405,24 @@ _url_encode() {
     printf '\n'
 }
 
-ALL_FUNCTIONS=(_bytes_to_human
-    _check_bash_version
-    _check_debug
-    _check_internet
-    _clear_line
-    _count
-    _dirname
-    _display_time
-    _get_latest_sha
-    _json_escape
-    _json_value
-    _print_center
-    _print_center_quiet
-    _set_value
-    _support_ansi_escapes
-    _timeout
-    _update_config
-    _url_encode)
-export -f "${ALL_FUNCTIONS[@]}"
+export -f _bytes_to_human \
+    _check_bash_version \
+    _check_debug \
+    _check_internet \
+    _clear_line \
+    _count \
+    _dirname \
+    _display_time \
+    _get_latest_sha \
+    _json_escape \
+    _json_value \
+    _print_center \
+    _print_center_quiet \
+    _set_value \
+    _support_ansi_escapes \
+    _timeout \
+    _update_config \
+    _url_encode
 # Sync a FOLDER to google drive forever using labbots/google-drive-upload
 # shellcheck source=/dev/null
 
