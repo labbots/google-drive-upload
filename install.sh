@@ -3,7 +3,7 @@
 # shellcheck source=/dev/null
 
 _usage() {
-    printf "%s" "
+    printf "%b" "
 The script can be used to install google-drive-upload script in your system.\n
 Usage: ${0##*/} [options.. ]\n
 All flags are optional.\n

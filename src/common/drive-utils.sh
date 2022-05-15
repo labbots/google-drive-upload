@@ -14,7 +14,7 @@
 # Reference:
 #   https://developers.google.com/drive/api/v3/search-files
 ###################################################
-_check_existing_file() (
+_check_existing_file() {
     export EXTRA_LOG CURL_PROGRESS_EXTRA API_URL API_VERSION
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
     name_check_existing_file="${1}" rootdir_check_existing_file="${2}" mode_check_existing_file="${3}" param_value_check_existing_file="${4}"
@@ -35,7 +35,7 @@ _check_existing_file() (
 
     printf "%s\n" "${response_check_existing_file}"
     return 0
-)
+}
 
 ###################################################
 # Copy/Clone a public gdrive file/folder from another/same gdrive account

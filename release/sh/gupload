@@ -1205,7 +1205,8 @@ printf "%s\n%s\n" "$(grep -v -e "^$" -e "^$value_name_update_config=" -- "$confi
 chmod a-w-r-x,u+r -- "$config_path_update_config"||return 1
 return 0
 }
-_check_existing_file()(export EXTRA_LOG CURL_PROGRESS_EXTRA API_URL API_VERSION
+_check_existing_file(){
+export EXTRA_LOG CURL_PROGRESS_EXTRA API_URL API_VERSION
 [ $# -lt 2 ]&&printf "Missing arguments\n"&&return 1
 name_check_existing_file="$1" rootdir_check_existing_file="$2" mode_check_existing_file="$3" param_value_check_existing_file="$4"
 unset query_check_existing_file response_check_existing_file id_check_existing_file
@@ -1219,7 +1220,8 @@ printf "%s\n" "$response_check_existing_file"|_json_value id 1 1 2>|/dev/null 1>
 [ "$(printf "%s\n" "$response_check_existing_file"|_json_value "$mode_check_existing_file" 1 1)" = "$param_value_check_existing_file" ]||return 1
 }
 printf "%s\n" "$response_check_existing_file"
-return 0)
+return 0
+}
 _clone_file(){
 export DESCRIPTION_FILE CHECK_MODE SKIP_DUPLICATES QUIET API_URL API_VERSION CURL_PROGRESS
 [ $# -lt 5 ]&&printf "Missing arguments\n"&&return 1
