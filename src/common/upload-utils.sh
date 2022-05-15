@@ -5,19 +5,16 @@
 # A simple wrapper to check tempfile for access token and make authorized oauth requests to drive api
 ###################################################
 _api_request() {
-    . "${TMPFILE}_ACCESS_TOKEN"
+    . "${TMPFILE:-}_ACCESS_TOKEN"
 
     curl --compressed \
-        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN:-}" \
         "${@}"
 }
 
 ###################################################
 # Used in collecting file properties from output json after a file has been uploaded/cloned
 # Also handles logging in log file if LOG_FILE_ID is set
-# Globals: 1 variables, 2 functions
-#   Variables - LOG_FILE_ID
-#   Functions - _error_logging_upload, _json_value
 # Arguments: 1
 #   ${1} = output jsom
 # Result: set fileid and link, save info to log file if required
@@ -56,9 +53,6 @@ _error_logging_upload() {
 
 ###################################################
 # A small function to get rootdir id for files in sub folder uploads
-# Globals: 1 variable, 1 function
-#   Variables - DIRIDS
-#   Functions - _dirname
 # Arguments: 1
 #   ${1} = filename
 # Result: read discription
@@ -108,9 +102,6 @@ _upload_file_main() {
 
 ###################################################
 # Upload all files in the given folder, parallelly or non-parallely and show progress
-# Globals: 7 variables, 3 functions
-#   Variables - VERBOSE, VERBOSE_PROGRESS, NO_OF_PARALLEL_JOBS, NO_OF_FILES, TMPFILE, UTILS_FOLDER and QUIET
-#   Functions - _clear_line, _newline, _print_center and _upload_file_main
 # Arguments: 4
 #   ${1} = parallel or normal
 #   ${2} = parse or norparse
@@ -119,8 +110,9 @@ _upload_file_main() {
 # Result: read discription, set SUCCESS_STATUS & ERROR_STATUS
 ###################################################
 _upload_folder() {
+    export VERBOSE VERBOSE_PROGRESS NO_OF_PARALLEL_JOBS TMPFILE NO_OF_FILES
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
-    mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}" && export PARSE_MODE ID
+    mode_upload_folder="${1}" PARSE_MODE="${2}" files_upload_folder="${3}" ID="${4:-}"
     SUCCESS_STATUS=0 SUCCESS_FILES="" ERROR_STATUS=0 ERROR_FILES=""
     case "${mode_upload_folder}" in
         normal)
@@ -145,6 +137,7 @@ EOF
             [ -f "${TMPFILE}"SUCCESS ] && rm "${TMPFILE}"SUCCESS
             [ -f "${TMPFILE}"ERROR ] && rm "${TMPFILE}"ERROR
 
+            export PARSE_MODE ID
             # shellcheck disable=SC2016
             (printf "%s\n" "${files_upload_folder}" | xargs -P"${NO_OF_PARALLEL_JOBS_FINAL}" -I "{}" -n 1 sh -c '
             eval "${SOURCE_UTILS}"
@@ -168,6 +161,7 @@ EOF
             ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))" ERROR_FILES="$(cat "${TMPFILE}"ERROR)"
             export SUCCESS_FILES ERROR_FILES
             ;;
+        *) : ;;
     esac
     return 0
 }

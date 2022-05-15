@@ -1,15 +1,14 @@
 #!/usr/bin/env sh
-# Functions that will used in core script
-# posix functions
+# Common functions which will be used in both bash and posix scripts
+# shellcheck source=/dev/null
 
 ###################################################
 # Convert bytes to human readable form
-# Globals: None
 # Required Arguments: 1
 #   ${1} = Positive integer ( bytes )
 # Result: Print human readable form.
 # Reference:
-#   https://unix.stackexchange.com/a/538015
+#   https://unix.stackexchange.com/a/259254
 ###################################################
 _bytes_to_human() {
     b_bytes_to_human="$(printf "%.0f\n" "${1:-0}")" s_bytes_to_human=0
@@ -27,34 +26,33 @@ _bytes_to_human() {
 
 ###################################################
 # Check if debug is enabled and enable command trace
-# Globals: 2 variables, 1 function
-#   Varibles - DEBUG, QUIET
-#   Function - _is_terminal
-# Arguments: None
 # Result: If DEBUG
 #   Present - Enable command trace and change print functions to avoid spamming.
 #   Absent  - Disable command trace
 #             Check QUIET, then check terminal size and enable print functions accordingly.
 ###################################################
 _check_debug() {
+    export DEBUG QUIET
     if [ -n "${DEBUG}" ]; then
         set -x && PS4='-> '
         _print_center() { { [ $# = 3 ] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
-        _clear_line() { :; } && _newline() { :; }
+        _clear_line() { :; } && _move_cursor() { :; } && _newline() { :; }
     else
         if [ -z "${QUIET}" ]; then
             # check if running in terminal and support ansi escape sequences
             if _support_ansi_escapes; then
-                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2>| /dev/null &&
+                if ! _required_column_size; then
                     _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
-                export CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#" SUPPORT_ANSI_ESCAPES="true"
+
+                fi
+                export EXTRA_LOG="_print_center" CURL_PROGRESS="-#" CURL_PROGRESS_EXTRA="-#" SUPPORT_ANSI_ESCAPES="true"
             else
                 _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
-                _clear_line() { :; }
+                _clear_line() { :; } && _move_cursor() { :; }
             fi
             _newline() { printf "%b" "${1}"; }
         else
-            _print_center() { :; } && _clear_line() { :; } && _newline() { :; }
+            _print_center() { :; } && _clear_line() { :; } && _move_cursor() { :; } && _newline() { :; }
         fi
         set +x
     fi
@@ -63,15 +61,12 @@ _check_debug() {
 ###################################################
 # Check internet connection.
 # Probably the fastest way, takes about 1 - 2 KB of data, don't check for more than 10 secs.
-# Globals: 3 functions
-#   _print_center, _clear_line, _timeout
-# Arguments: None
 # Result: On
 #   Success - Nothing
 #   Error   - print message and exit 1
 ###################################################
 _check_internet() {
-    "${EXTRA_LOG}" "justify" "Checking Internet Connection.." "-"
+    "${EXTRA_LOG:-}" "justify" "Checking Internet Connection.." "-"
     if ! _timeout 10 curl -Is google.com --compressed; then
         _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
@@ -82,7 +77,6 @@ _check_internet() {
 
 ###################################################
 # Move cursor to nth no. of line and clear it to the begining.
-# Globals: None
 # Arguments: 1
 #   ${1} = Positive integer ( line number )
 # Result: Read description
@@ -93,7 +87,6 @@ _clear_line() {
 
 ###################################################
 # Alternative to dirname command
-# Globals: None
 # Arguments: 1
 #   ${1} = path of file or folder
 # Result: read description
@@ -102,7 +95,7 @@ _clear_line() {
 ###################################################
 _dirname() {
     dir_dirname="${1:-.}"
-    dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}" && [ "${dir_dirname##*/*}" ] && dir_dirname=.
+    dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}" && [ -n "${dir_dirname##*/*}" ] && dir_dirname=.
     dir_dirname="${dir_dirname%/*}" && dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}"
     printf '%s\n' "${dir_dirname:-/}"
 }
@@ -110,7 +103,6 @@ _dirname() {
 ###################################################
 # Convert given time in seconds to readable form
 # 110 to 1 minute(s) and 50 seconds
-# Globals: None
 # Arguments: 1
 #   ${1} = Positive Integer ( time in seconds )
 # Result: read description
@@ -128,21 +120,8 @@ _display_time() {
 }
 
 ###################################################
-# print column size
-# use zsh or stty or tput
-###################################################
-_get_columns_size() {
-    { command -v bash 1>| /dev/null && bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1'; } ||
-        { command -v zsh 1>| /dev/null && zsh -c 'printf "%s\n" "${COLUMNS}"'; } ||
-        { command -v stty 1>| /dev/null && _tmp="$(stty size)" && printf "%s\n" "${_tmp##* }"; } ||
-        { command -v tput 1>| /dev/null && tput cols; } ||
-        return 1
-}
-
-###################################################
 # Fetch latest commit sha of release or branch
 # Do not use github rest api because rate limit error occurs
-# Globals: None
 # Arguments: 3
 #   ${1} = "branch" or "release"
 #   ${2} = branch name or release name
@@ -150,6 +129,7 @@ _get_columns_size() {
 # Result: print fetched sha
 ###################################################
 _get_latest_sha() {
+    export TYPE TYPE_VALUE REPO
     unset latest_sha_get_latest_sha raw_get_latest_sha
     case "${1:-${TYPE}}" in
         branch)
@@ -164,13 +144,13 @@ _get_latest_sha() {
                 _tmp="$(printf "%s\n" "${raw_get_latest_sha}" | grep "=\"/""${3:-${REPO}}""/commit" -m1 || :)" && _tmp="${_tmp##*commit\/}" && printf "%s\n" "${_tmp%%\"*}"
             )"
             ;;
+        *) : ;;
     esac
     printf "%b" "${latest_sha_get_latest_sha:+${latest_sha_get_latest_sha}\n}"
 }
 
 ###################################################
 # Encode the given string to parse properly as json
-# Globals: None
 # Arguments: 2
 #   ${1} = json or something else
 #   ${2} = input
@@ -202,7 +182,6 @@ _json_escape() {
 
 ###################################################
 # Method to extract specified field data from json
-# Globals: None
 # Arguments: 2
 #   ${1} - value of field to fetch from json
 #   ${2} - Optional, no of lines to parse for the given field in 1st arg
@@ -217,15 +196,63 @@ _json_value() {
     { [ "${3}" -gt 0 ] 2>| /dev/null && num_json_value="${3}"; } || { ! [ "${3}" = all ] && num_json_value=1; }
     # shellcheck disable=SC2086
     _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines_json_value:+-m} ${no_of_lines_json_value})" || return 1
-    printf "%s\n" "${_tmp}" | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num_json_value}"p || :
+    printf "%s\n" "${_tmp}" | sed -e "s|.*\"""${1}""\":||" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num_json_value}"p || :
+    return 0
+}
+
+###################################################
+# Function to parse config in format a=b
+# Arguments: 2
+#   ${1} - path to config file
+#   ${2} - optional, if true will print the config
+# Input: file
+#   _parse_config file
+# Result: all the values in the config file will be exported as variables
+###################################################
+_parse_config() {
+    _config_file_parse_config="${1:?Error: Profile config file}"
+    print_parse_config="${2:-false}"
+
+    # check if the config file accessible
+    [ -r "${_config_file_parse_config}" ] || {
+        printf "%s\n" "Error: Given config file ( ${_config_file_parse_config} ) is not readable."
+        return 1
+    }
+
+    # Setting 'IFS' tells 'read' where to split the string.
+    while IFS='=' read -r key val; do
+        # Skip Lines starting with '#'
+        # Also skip lines if key and val variable is empty
+        { [ -n "${key}" ] && [ -n "${val}" ] && [ -n "${key##\#*}" ]; } || continue
+
+        # trim all leading white space
+        key="${key#"${key%%[![:space:]]*}"}"
+        val="${val#"${val%%[![:space:]]*}"}"
+
+        # trim all trailing white space
+        key="${key%"${key##*[![:space:]]}"}"
+        val="${val%"${val##*[![:space:]]}"}"
+
+        # trim the first and last qoute if present on both sides
+        case "${val}" in
+            \"*\") val="${val#\"}" val="${val%\"}" ;;
+            \'*\') val="${val#\'}" val="${val%\'}" ;;
+            *) : ;;
+        esac
+
+        # '$key' stores the key and '$val' stores the value.
+        # Throw a warning if cannot export the variable
+        export "${key}=${val}" 2> /dev/null || printf "%s\n" "Warning: ${key} is not a valid variable name."
+
+        [ "${print_parse_config}" = true ] && echo "${key}=${val}"
+    done < "${_config_file_parse_config}"
+
     return 0
 }
 
 ###################################################
 # Print a text to center interactively and fill the rest of the line with text specified.
 # This function is fine-tuned to this script functionality, so may appear unusual.
-# Globals: 1 variable
-#   COLUMNS
 # Arguments: 4
 #   If ${1} = normal
 #      ${2} = text to print
@@ -243,7 +270,7 @@ _json_value() {
 ###################################################
 _print_center() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
-    term_cols_print_center="${COLUMNS}"
+    term_cols_print_center="${COLUMNS:-}"
     type_print_center="${1}" filler_print_center=""
     case "${type_print_center}" in
         normal) out_print_center="${2}" && symbol_print_center="${3}" ;;
@@ -286,46 +313,28 @@ _print_center() {
 }
 
 ###################################################
-# Quiet version of _print_center
+# print_center arguments but normal print
 ###################################################
 _print_center_quiet() {
-    { [ $# = 3 ] && printf "%s\n" "${2}"; } || printf "%s%s\n" "${2}" "${3}"
-}
-
-###################################################
-# Evaluates value1=value2
-# Globals: None
-# Arguments: 3
-#   ${1} = direct ( d ) or indirect ( i ) - ( evaluation mode )
-#   ${2} = var name
-#   ${3} = var value
-# Result: export value1=value2
-###################################################
-_set_value() {
-    case "${1:?}" in
-        d | direct) export "${2:?}=${3}" ;;
-        i | indirect) export "${2:?}=$(eval printf "%s" \"\$"${3}"\")" ;;
-    esac
+    { [ $# = 3 ] && printf "%s\n" "${2}"; } ||
+        { printf "%s%s\n" "${2}" "${3}"; }
 }
 
 ###################################################
 # Check if script terminal supports ansi escapes
-# Globals: 1 variable
-#   TERM
-# Arguments: None
 # Result: return 1 or 0
 ###################################################
 _support_ansi_escapes() {
     unset ansi_escapes
-    case "${TERM}" in
+    case "${TERM:-}" in
         xterm* | rxvt* | urxvt* | linux* | vt* | screen*) ansi_escapes="true" ;;
+        *) : ;;
     esac
     { [ -t 2 ] && [ -n "${ansi_escapes}" ] && return 0; } || return 1
 }
 
 ###################################################
 # Alternative to timeout command
-# Globals: None
 # Arguments: 1 and rest
 #   ${1} = amount of time to sleep
 #   rest = command to execute
@@ -350,7 +359,6 @@ _timeout() {
 ###################################################
 # Config updater
 # Incase of old value, update, for new value add.
-# Globals: None
 # Arguments: 3
 #   ${1} = value name
 #   ${2} = value
@@ -361,26 +369,9 @@ _update_config() {
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     value_name_update_config="${1}" value_update_config="${2}" config_path_update_config="${3}"
     ! [ -f "${config_path_update_config}" ] && : >| "${config_path_update_config}" # If config file doesn't exist.
-    chmod u+w "${config_path_update_config}" || return 1
-    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name_update_config}=" "${config_path_update_config}" || :)" \
+    chmod u+w -- "${config_path_update_config}" || return 1
+    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name_update_config}=" -- "${config_path_update_config}" || :)" \
         "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}" || return 1
-    chmod a-w-r-x,u+r "${config_path_update_config}" || return 1
+    chmod a-w-r-x,u+r -- "${config_path_update_config}" || return 1
     return 0
 }
-
-###################################################
-# Encode the given string to parse properly in network requests
-# Globals: None
-# Arguments: 1
-#   ${1} = string
-# Result: print encoded string
-# Reference:
-#   https://stackoverflow.com/a/41405682
-###################################################
-_url_encode() (
-    LC_ALL=C LANG=C
-    awk 'BEGIN {while (y++ < 125) z[sprintf("%c", y)] = y
-  while (y = substr(ARGV[1], ++j, 1))
-  q = y ~ /[[:alnum:]]_.!~*\47()-]/ ? q y : q sprintf("%%%02X", z[y])
-  print q}' "${1}"
-)

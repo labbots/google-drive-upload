@@ -1,0 +1,1003 @@
+#!/usr/bin/env sh
+SELF_SOURCE="true"
+set -a
+_assert_regex(){
+grep -qE "${1:?Error: Missing pattern}" 0<<EOF
+${2:?Missing string}
+EOF
+}
+_count(){
+wc -l
+}
+_epoch(){
+date +'%s'
+}
+_required_column_size(){
+COLUMNS="$({ command -v bash 1>|/dev/null&&bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1';}||{ command -v zsh 1>|/dev/null&&zsh -c 'printf "%s\n" "${COLUMNS}"';}||{ command -v stty 1>|/dev/null&&_tmp="$(stty size)"&&printf "%s\n" "${_tmp##* }";}||{ command -v tput 1>|/dev/null&&tput cols;})"||:
+[ "$((COLUMNS))" -gt 45 ]&&return 0
+}
+_set_value(){
+case "${1:?}" in
+d|direct)export "${2:?}=$3";;
+i|indirect)eval export "$2"=\"\$"$3"\";;
+*)return 1
+esac
+}
+_url_encode()(\
+LC_ALL=C \
+LANG=C
+awk 'BEGIN {while (y++ < 125) z[sprintf("%c", y)] = y
+  while (y = substr(ARGV[1], ++j, 1))
+  q = y ~ /[[:alnum:]]_.!~*\47()-]/ ? q y : q sprintf("%%%02X", z[y])
+  print q}' "$1")
+_is_fd_open(){
+for fd in ${1:?};do
+if ! { true >&"$fd";} 2<>/dev/null;then
+printf "%s\n" "Error: fd $fd not open."
+return 1
+fi
+done
+}
+_parser_add_help(){
+_PARSER_ALL_HELP="$_PARSER_ALL_HELP
+${__PARSER_BAR:-}
+${1:-}" 2>|/dev/null
+}
+_parser_check_arguments(){
+nargs_parser_check_arguments="$((${1:?_parser_check_arguments}))"
+num_parser_check_arguments=$(($#-2))
+[ "$num_parser_check_arguments" -lt "$nargs_parser_check_arguments" ]&&{
+printf "%s\n" "${0##*/}: $2: flag requires $nargs_parser_check_arguments argument."
+printf "\n%s\n" "Help:"
+printf "%s\n" "$(_usage "$2")"
+exit 1
+}
+return 0
+}
+_flag_exists(){
+tmp_flag_exists="" option_flag_exists=""
+_flag_help "${1:?}" tmp_flag_exists option_flag_exists
+[ -z "$tmp_flag_exists" ]&&return 1
+_set_value d "${2:?}" "$option_flag_exists"
+}
+_flag_help(){
+flag_flag_help=""
+_trim "-" "${1:?_flag_help}" flag_flag_help
+_set_value i "${2:?_flag_help}" "_parser__help_$flag_flag_help"
+_set_value d "${3:-_}" "$flag_flag_help"
+}
+_parse_arguments(){
+__NEWLINE="
+"
+_parse_support_ansi_escapes(){
+case "$TERM" in
+xterm*|rxvt*|urxvt*|linux*|vt*|screen*){ [ -t 2 ]&&return 0;}||return 1;;
+*):
+esac
+{ [ -t 2 ]&&return 0;}||return 1
+}
+_parser_required_column_size(){
+COLUMNS="$({ command -v bash 1>|/dev/null&&bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1';}||{ command -v zsh 1>|/dev/null&&zsh -c 'printf "%s\n" "${COLUMNS}"';}||{ command -v stty 1>|/dev/null&&_tmp="$(stty size)"&&printf "%s\n" "${_tmp##* }";}||{ command -v tput 1>|/dev/null&&tput cols;})"||:
+[ "$((COLUMNS))" -gt 45 ]&&return 0
+}
+_parse_support_ansi_escapes&&_parser_required_column_size&&__PARSER_BAR="$(\
+filler='' \
+symbol='_'
+i=1&&while [ "$i" -le "$COLUMNS" ];do
+filler="$filler$symbol"&&i="$((i+1))"
+done
+printf "%s\n" "$filler")"
+__PARSER_BAR="${__PARSER_BAR:+$__PARSER_BAR$__NEWLINE}"
+unset _PARSER_ALL_HELP _PARSER_ARGS_SHIFT _PARSER_PREPROCESS_FUNCTION
+unset _PARSER_FLAGS _PARSER_CURRENT_FLAGS _PARSER_CURRENT_NARGS _PARSER_CURRENT_ARGS _PARSER_CURRENT_ARGS_TYPE
+"${1:?_parse_arguments - 1: Missing funtion name to setup flags}"||return 1
+shift 2>|/dev/null
+_parser_run_preprocess||return 1
+while [ "$#" -gt 0 ];do
+case "$1" in
+''):;;
+--)shift
+while [ "$#" -gt 0 ];do
+_parser_process_input "$@"||return 1
+shift
+done
+;;
+-*)\
+flag_parse_arguments=""
+if _flag_exists "$1" flag_parse_arguments;then
+"_parser_process_$flag_parse_arguments" "$@"||return 1
+else
+printf "%s\n\n" "${0##*/}: $1: Unknown option"
+_short_help
+fi
+;;
+*)_parser_process_input "$@"||return 1
+esac
+_PARSER_ARGS_SHIFT="$((_PARSER_ARGS_SHIFT+1))"
+shift "$_PARSER_ARGS_SHIFT"
+_PARSER_ARGS_SHIFT="0"
+done
+return 0
+}
+_parser_setup_flag(){
+_PARSER_CURRENT_FLAGS="" tmp_parser_setup_flag=""
+_PARSER_FLAGS="${1:?_parser_setup_flag}"
+for f in $_PARSER_FLAGS;do
+_trim "-" "$f" tmp_parser_setup_flag
+_PARSER_CURRENT_FLAGS="$_PARSER_CURRENT_FLAGS $tmp_parser_setup_flag"
+done
+_PARSER_CURRENT_NARGS="${2:?_parser_setup_flag}"
+_PARSER_CURRENT_ARGS_TYPE="$3"
+_PARSER_CURRENT_ARGS="$4"
+}
+_parser_setup_flag_help(){
+flags_parser_setup_flag_help="${_PARSER_CURRENT_FLAGS:?_parser_setup_flag_help}"
+nargs_parser_setup_flag_help="${_PARSER_CURRENT_NARGS:?_parser_setup_flag_help}"
+unset start_parser_setup_flag_help \
+help_parser_setup_flag_help \
+arg_parser_setup_flag_help \
+all_parser_setup_flag_help
+while IFS= read -r line <&4;do
+help_parser_setup_flag_help="$help_parser_setup_flag_help
+        $line"
+done 4<<EOF
+${1:?_parser_setup_flag_help}
+EOF
+for f in ${_PARSER_FLAGS:?_parser_setup_flag_help};do
+start_parser_setup_flag_help="${start_parser_setup_flag_help:+$start_parser_setup_flag_help | }$f"
+done
+if ! [ "$nargs_parser_setup_flag_help" = 0 ];then
+arg_parser_setup_flag_help="\"${_PARSER_CURRENT_ARGS:?_parser_setup_flag_help}\""
+if [ "$_PARSER_CURRENT_ARGS_TYPE" = optional ];then
+arg_parser_setup_flag_help="$arg_parser_setup_flag_help [ Optional ]"
+else
+arg_parser_setup_flag_help="$arg_parser_setup_flag_help [ Required ]"
+fi
+fi
+start_parser_setup_flag_help="    $start_parser_setup_flag_help $arg_parser_setup_flag_help"
+all_setup_help_flag="$start_parser_setup_flag_help${__NEWLINE:?}$help_parser_setup_flag_help"
+for f in $flags_parser_setup_flag_help;do
+_set_value d "_parser__help_$f" "$all_setup_help_flag"
+done
+[ "$_PARSER_FLAGS" = input ]&&return 0
+_PARSER_ALL_HELP="$_PARSER_ALL_HELP
+${__PARSER_BAR:-}
+$all_setup_help_flag" 2>|/dev/null
+}
+_parser_setup_flag_preprocess(){
+_is_fd_open 4||return 1
+unset fn_parser_setup_flag_preprocess
+while IFS= read -r line <&4;do
+fn_parser_setup_flag_preprocess="$fn_parser_setup_flag_preprocess
+$line"
+done
+_PARSER_PREPROCESS_FUNCTION="$_PARSER_PREPROCESS_FUNCTION
+$fn_parser_setup_flag_preprocess"
+}
+_parser_setup_flag_process(){
+_is_fd_open 4||return 1
+unset fn_parser_setup_flag_process
+if [ "${_PARSER_CURRENT_NARGS:?_parser_setup_flag_process}" -gt 0 ]&&! [ "$_PARSER_CURRENT_ARGS_TYPE" = optional ];then
+fn_parser_setup_flag_process="_parser_check_arguments ${_PARSER_CURRENT_NARGS:?_parser_setup_flag_process} \"\${@}\""
+fi
+while IFS= read -r line <&4;do
+fn_parser_setup_flag_process="$fn_parser_setup_flag_process
+$line"
+done
+for f in ${_PARSER_CURRENT_FLAGS:?_parser_setup_flag_process};do
+eval "_parser_process_$f() { $fn_parser_setup_flag_process ; }"
+done
+}
+_parser_run_preprocess(){
+eval "_parser_preprocess_setup() { ${_PARSER_PREPROCESS_FUNCTION:-:} ; }"&&_parser_preprocess_setup
+}
+_parser_shift(){
+export _PARSER_ARGS_SHIFT="${1:-1}"
+}
+_short_help(){
+printf "No valid arguments provided, use -h/--help flag to see usage.\n"
+exit 0
+}
+_set_value(){
+case "${1:?}" in
+d|direct)export "${2:?}=$3";;
+i|indirect)eval export "$2"=\"\$"$3"\";;
+*)return 1
+esac
+}
+_trim(){
+char_trim="$1" str_trim="$2" var_trim="$3"
+set -f
+old_ifs="$IFS"
+IFS="$char_trim"
+set -- $str_trim
+IFS=
+if [ -n "$var_trim" ];then
+_set_value d "$var_trim" "$*"
+else
+printf "%s" "$*"
+fi
+IFS="$old_ifs"
+set +f
+}
+_bytes_to_human(){
+b_bytes_to_human="$(printf "%.0f\n" "${1:-0}")" s_bytes_to_human=0
+d_bytes_to_human='' type_bytes_to_human=''
+while [ "$b_bytes_to_human" -gt 1024 ];do
+d_bytes_to_human="$(printf ".%02d" $((b_bytes_to_human%1024*100/1024)))"
+b_bytes_to_human=$((b_bytes_to_human/1024))&&s_bytes_to_human=$((s_bytes_to_human+=1))
+done
+j=0&&for i in B KB MB GB TB PB EB YB ZB;do
+j="$((j+=1))"&&[ "$((j-1))" = "$s_bytes_to_human" ]&&type_bytes_to_human="$i"&&break
+continue
+done
+printf "%s\n" "$b_bytes_to_human$d_bytes_to_human $type_bytes_to_human"
+}
+_check_debug(){
+export DEBUG QUIET
+if [ -n "$DEBUG" ];then
+set -x&&PS4='-> '
+_print_center(){ { [ $# = 3 ]&&printf "%s\n" "$2";}||{ printf "%s%s\n" "$2" "$3";};}
+_clear_line(){ :;}&&_move_cursor(){ :;}&&_newline(){ :;}
+else
+if [ -z "$QUIET" ];then
+if _support_ansi_escapes;then
+if ! _required_column_size;then
+_print_center(){ { [ $# = 3 ]&&printf "%s\n" "[ $2 ]";}||{ printf "%s\n" "[ $2$3 ]";};}
+fi
+export EXTRA_LOG="_print_center" CURL_PROGRESS="-#" CURL_PROGRESS_EXTRA="-#" SUPPORT_ANSI_ESCAPES="true"
+else
+_print_center(){ { [ $# = 3 ]&&printf "%s\n" "[ $2 ]";}||{ printf "%s\n" "[ $2$3 ]";};}
+_clear_line(){ :;}&&_move_cursor(){ :;}
+fi
+_newline(){ printf "%b" "$1";}
+else
+_print_center(){ :;}&&_clear_line(){ :;}&&_move_cursor(){ :;}&&_newline(){ :;}
+fi
+set +x
+fi
+}
+_check_internet(){
+"${EXTRA_LOG:-}" "justify" "Checking Internet Connection.." "-"
+if ! _timeout 10 curl -Is google.com --compressed;then
+_clear_line 1
+"${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
+return 1
+fi
+_clear_line 1
+}
+_clear_line(){
+printf "\033[%sA\033[2K" "$1"
+}
+_dirname(){
+dir_dirname="${1:-.}"
+dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}"&&[ -n "${dir_dirname##*/*}" ]&&dir_dirname=.
+dir_dirname="${dir_dirname%/*}"&&dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}"
+printf '%s\n' "${dir_dirname:-/}"
+}
+_display_time(){
+t_display_time="$1" day_display_time="$((t_display_time/60/60/24))"
+hr_display_time="$((t_display_time/60/60%24))" min_display_time="$((t_display_time/60%60))" sec_display_time="$((t_display_time%60))"
+[ "$day_display_time" -gt 0 ]&&printf '%d days ' "$day_display_time"
+[ "$hr_display_time" -gt 0 ]&&printf '%d hrs ' "$hr_display_time"
+[ "$min_display_time" -gt 0 ]&&printf '%d minute(s) ' "$min_display_time"
+[ "$day_display_time" -gt 0 ]||[ "$hr_display_time" -gt 0 ]||[ "$min_display_time" -gt 0 ]&&printf 'and '
+printf '%d seconds\n' "$sec_display_time"
+}
+_get_latest_sha(){
+export TYPE TYPE_VALUE REPO
+unset latest_sha_get_latest_sha raw_get_latest_sha
+case "${1:-$TYPE}" in
+branch)\
+latest_sha_get_latest_sha="$(\
+raw_get_latest_sha="$(curl --compressed -s https://github.com/"${3:-$REPO}"/commits/"${2:-$TYPE_VALUE}".atom -r 0-2000)"
+_tmp="$(printf "%s\n" "$raw_get_latest_sha"|grep -o 'Commit\/.*<' -m1||:)"&&_tmp="${_tmp##*\/}"&&printf "%s\n" "${_tmp%%<*}")"
+;;
+release)\
+latest_sha_get_latest_sha="$(\
+raw_get_latest_sha="$(curl -L --compressed -s https://github.com/"${3:-$REPO}"/releases/"${2:-$TYPE_VALUE}")"
+_tmp="$(printf "%s\n" "$raw_get_latest_sha"|grep '="/'"${3:-$REPO}""/commit" -m1||:)"&&_tmp="${_tmp##*commit\/}"&&printf "%s\n" "${_tmp%%\"*}")"
+;;
+*):
+esac
+printf "%b" "${latest_sha_get_latest_sha:+$latest_sha_get_latest_sha\n}"
+}
+_json_escape(){
+mode_json_escape="${1:?Missing mode}" input_json_escape="${2:?Provide Input}" output_json_escape=""
+if [ "$mode_json_escape" = "j" ];then
+output_json_escape="$(printf "%s" "$input_json_escape"|sed \
+-e "s|\\\|\\\\\\\|g" \
+-e "s|\/|\\\/|g" \
+-e 's/\"/\\\"/g' \
+-e "s/$(printf '\t')/\\t/g" \
+-e "s/$(printf '\r')/\\r/g" \
+-e "s/$(printf '\f')/\\f/g")"
+else
+output_json_escape="$(printf "%s" "$input_json_escape"|sed \
+-e "s/$(printf '\t')/\\t/g" \
+-e "s/$(printf '\r')/\\r/g" \
+-e "s/$(printf '\f')/\\f/g")"
+fi
+output_json_escape="$(printf "%s" "$output_json_escape"|awk '{printf "%s%s",sep,$0; sep="\\n"} END{print ""}')"
+printf "%s" "$output_json_escape"
+}
+_json_value(){
+{ [ "$2" -gt 0 ] 2>|/dev/null&&no_of_lines_json_value="$2";}||:
+{ [ "$3" -gt 0 ] 2>|/dev/null&&num_json_value="$3";}||{ ! [ "$3" = all ]&&num_json_value=1;}
+_tmp="$(grep -o "\"$1\"\:.*" ${no_of_lines_json_value:+-m} $no_of_lines_json_value)"||return 1
+printf "%s\n" "$_tmp"|sed -e 's|.*"'"$1""\":||" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "$num_json_value"p||:
+return 0
+}
+_parse_config(){
+_config_file_parse_config="${1:?Error: Profile config file}"
+print_parse_config="${2:-false}"
+[ -r "$_config_file_parse_config" ]||{
+printf "%s\n" "Error: Given config file ( $_config_file_parse_config ) is not readable."
+return 1
+}
+while IFS='=' read -r key val;do
+{ [ -n "$key" ]&&[ -n "$val" ]&&[ -n "${key##\#*}" ];}||continue
+key="${key#"${key%%[![:space:]]*}"}"
+val="${val#"${val%%[![:space:]]*}"}"
+key="${key%"${key##*[![:space:]]}"}"
+val="${val%"${val##*[![:space:]]}"}"
+case "$val" in
+\"*\")val="${val#\"}" val="${val%\"}";;
+\'*\')val="${val#\'}" val="${val%\'}";;
+*):
+esac
+export "$key=$val" 2>/dev/null||printf "%s\n" "Warning: $key is not a valid variable name."
+[ "$print_parse_config" = true ]&&echo "$key=$val"
+done <"$_config_file_parse_config"
+return 0
+}
+_print_center(){
+[ $# -lt 3 ]&&printf "Missing arguments\n"&&return 1
+term_cols_print_center="${COLUMNS:-}"
+type_print_center="$1" filler_print_center=""
+case "$type_print_center" in
+normal)out_print_center="$2"&&symbol_print_center="$3";;
+justify)if
+[ $# = 3 ]
+then
+input1_print_center="$2" symbol_print_center="$3" to_print_print_center="" out_print_center=""
+to_print_print_center="$((term_cols_print_center-5))"
+{ [ "${#input1_print_center}" -gt "$to_print_print_center" ]&&out_print_center="[ $(printf "%.${to_print_print_center}s\n" "$input1_print_center")..]";}||{ out_print_center="[ $input1_print_center ]";}
+else
+input1_print_center="$2" input2_print_center="$3" symbol_print_center="$4" to_print_print_center="" temp_print_center="" out_print_center=""
+to_print_print_center="$((term_cols_print_center*47/100))"
+{ [ "${#input1_print_center}" -gt "$to_print_print_center" ]&&temp_print_center=" $(printf "%.${to_print_print_center}s\n" "$input1_print_center")..";}||{ temp_print_center=" $input1_print_center";}
+to_print_print_center="$((term_cols_print_center*46/100))"
+{ [ "${#input2_print_center}" -gt "$to_print_print_center" ]&&temp_print_center="$temp_print_center$(printf "%.${to_print_print_center}s\n" "$input2_print_center").. ";}||{ temp_print_center="$temp_print_center$input2_print_center ";}
+out_print_center="[$temp_print_center]"
+fi
+;;
+*)return 1
+esac
+str_len_print_center="${#out_print_center}"
+[ "$str_len_print_center" -ge "$((term_cols_print_center-1))" ]&&{
+printf "%s\n" "$out_print_center"&&return 0
+}
+filler_print_center_len="$(((term_cols_print_center-str_len_print_center)/2))"
+i_print_center=1&&while [ "$i_print_center" -le "$filler_print_center_len" ];do
+filler_print_center="$filler_print_center$symbol_print_center"&&i_print_center="$((i_print_center+1))"
+done
+printf "%s%s%s" "$filler_print_center" "$out_print_center" "$filler_print_center"
+[ "$(((term_cols_print_center-str_len_print_center)%2))" -ne 0 ]&&printf "%s" "$symbol_print_center"
+printf "\n"
+return 0
+}
+_print_center_quiet(){
+{ [ $# = 3 ]&&printf "%s\n" "$2";}||{ printf "%s%s\n" "$2" "$3";}
+}
+_support_ansi_escapes(){
+unset ansi_escapes
+case "${TERM:-}" in
+xterm*|rxvt*|urxvt*|linux*|vt*|screen*)ansi_escapes="true";;
+*):
+esac
+{ [ -t 2 ]&&[ -n "$ansi_escapes" ]&&return 0;}||return 1
+}
+_timeout(){
+timeout_timeout="${1:?Error: Specify Timeout}"&&shift
+{
+"$@"&
+child="$!"
+trap -- "" TERM
+{
+sleep "$timeout_timeout"
+kill -9 "$child"
+}&
+wait "$child"
+} 2>|/dev/null 1>&2
+}
+_update_config(){
+[ $# -lt 3 ]&&printf "Missing arguments\n"&&return 1
+value_name_update_config="$1" value_update_config="$2" config_path_update_config="$3"
+! [ -f "$config_path_update_config" ]&&: >|"$config_path_update_config"
+chmod u+w -- "$config_path_update_config"||return 1
+printf "%s\n%s\n" "$(grep -v -e "^$" -e "^$value_name_update_config=" -- "$config_path_update_config"||:)" \
+"$value_name_update_config=\"$value_update_config\"" >|"$config_path_update_config"||return 1
+chmod a-w-r-x,u+r -- "$config_path_update_config"||return 1
+return 0
+}
+set +a
+_usage(){
+printf "%b" "
+The script can be used to sync your local folder to google drive.
+
+Utilizes google-drive-upload bash scripts.\n
+Usage: ${0##*/} [options.. ]\n
+Options:\n
+  -d | --directory - Gdrive foldername.\n
+  -k | --kill - to kill the background job using pid number ( -p flags ) or used with input, can be used multiple times.\n
+  -j | --jobs - See all background jobs that were started and still running.\n
+     Use --jobs v/verbose to more information for jobs.\n
+  -p | --pid - Specify a pid number, used for --jobs or --kill or --info flags, can be used multiple times.\n
+  -i | --info - See information about a specific sync using pid_number ( use -p flag ) or use with input, can be used multiple times.\n
+  -t | --time <time_in_seconds> - Amount of time to wait before try to sync again in background.\n
+     To set wait time by default, use ${0##*/} -t default='3'. Replace 3 with any positive integer.\n
+  -l | --logs - To show the logs after starting a job or show log of existing job. Can be used with pid number ( -p flag ).
+     Note: If multiple pid numbers or inputs are used, then will only show log of first input as it goes on forever.
+  -a | --arguments - Additional arguments for gupload commands. e.g: ${0##*/} -a '-q -o -p 4 -d'.\n
+     To set some arguments by default, use ${0##*/} -a default='-q -o -p 4 -d'.\n
+  -fg | --foreground - This will run the job in foreground and show the logs.\n
+  -in | --include 'pattern' - Only include the files with the given pattern to upload.\n
+       e.g: ${0##*/} local_folder --include "*1*", will only include with files with pattern '1' in the name.\n
+  -ex | --exclude 'pattern' - Exclude the files with the given pattern from uploading.\n
+       e.g: ${0##*/} local_folder --exclude "*1*", will exclude all files with pattern '1' in the name.\n
+  -c | --command 'command name'- Incase if gupload command installed with any other name or to use in systemd service.\n
+  --sync-detail-dir 'dirname' - Directory where a job information will be stored.
+     Default: $HOME/.google-drive-upload\n
+  -s | --service 'service name' - To generate systemd service file to setup background jobs on boot.\n
+  -D | --debug - Display script command trace, use before all the flags to see maximum script trace.\n
+  -h | --help - Display usage instructions.\n"
+exit 0
+}
+_short_help(){
+printf "No valid arguments provided, use -h/--help flag to see usage.\n"
+exit 0
+}
+_check_pid(){
+{ ps -p "$1" 2>|/dev/null 1>&2&&return 0;}||return 1
+}
+_get_job_info(){
+unset local_folder_get_job_info times_get_job_info extra_get_job_info
+pid_get_job_info="$1"&&input_get_job_info="${3:-$(grep "$pid_get_job_info" "$SYNC_LIST"||:)}"
+if [ -n "$input_get_job_info" ];then
+if times_get_job_info="$(ps -p "$pid_get_job_info" -o etimes --no-headers)";then
+printf "\n%s\n" "PID: $pid_get_job_info"
+_tmp="${input_get_job_info#*"|:_//_:|"}"&&local_folder_get_job_info="${_tmp%%"|:_//_:|"*}"
+printf "Local Folder: %s\n" "$local_folder_get_job_info"
+printf "Drive Folder: %s\n" "${input_get_job_info##*"|:_//_:|"}"
+printf "Running Since: %s\n" "$(_display_time "$times_get_job_info")"
+[ -n "$2" ]&&{
+extra_get_job_info="$(ps -p "$pid_get_job_info" -o %cpu,%mem --no-headers||:)"
+printf "CPU usage:%s\n" "${extra_get_job_info% *}"
+printf "Memory usage: %s\n" "${extra_get_job_info##* }"
+_setup_loop_variables "$local_folder_get_job_info" "${input_get_job_info##*"|:_//_:|"}"
+printf "Success: %s\n" "$(($(wc -l <"$SUCCESS_LOG")))"
+printf "Failed: %s\n" "$(($(wc -l <"$ERROR_LOG")))"
+}
+RETURN_STATUS=0
+else
+RETURN_STATUS=1
+fi
+else
+RETURN_STATUS=11
+fi
+return 0
+}
+_remove_job(){
+unset input_remove_job local_folder_remove_job drive_folder_remove_job new_list_remove_job
+pid_remove_job="$1"
+if [ -n "$pid_remove_job" ];then
+input_remove_job="$(grep "$pid_remove_job" "$SYNC_LIST"||:)"
+_tmp="${input_remove_job#*"|:_//_:|"}"&&local_folder_remove_job="${_tmp%%"|:_//_:|"*}"
+drive_folder_remove_job="${input_remove_job##*"|:_//_:|"}"
+new_list_remove_job="$(grep -v "$pid_remove_job" "$SYNC_LIST"||:)"
+printf "%s\n" "$new_list_remove_job" >|"$SYNC_LIST"
+fi
+rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-$2}${local_folder_remove_job:-$3}"
+{ [ -z "$(find "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-$2}" -type f)" ]&&rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-$2}";} 2>|/dev/null 1>&2
+return 0
+}
+_kill_job(){
+pid_kill_job="$1"
+kill -9 "$pid_kill_job" 2>|/dev/null 1>&2||:
+_remove_job "$pid_kill_job"
+printf "Killed.\n"
+}
+_show_jobs(){
+unset list_show_job pid_show_job no_task_show_job
+total_show_job=0 list_show_job="$(grep -v '^$' "$SYNC_LIST"||:)"
+printf "%s\n" "$list_show_job" >|"$SYNC_LIST"
+while read -r line <&4;do
+if [ -n "$line" ];then
+_tmp="${line%%"|:_//_:|"*}"&&pid_show_job="${_tmp##*: }"
+_get_job_info "$pid_show_job" "$1" "$line"
+if [ "$RETURN_STATUS" = 1 ];then
+_remove_job "$pid_show_job"
+else
+total_show_job="$((total_show_job+1))"&&no_task_show_job="printf"
+fi
+fi
+done 4<"$SYNC_LIST"
+printf "\nTotal Jobs Running: %s\n" "$total_show_job"
+[ -z "$1" ]&&"${no_task_show_job:-:}" "For more info: %s -j/--jobs v/verbose\n" "${0##*/}"
+return 0
+}
+_setup_loop_variables(){
+folder_setup_loop_variables="$1" drive_folder_setup_loop_variables="$2"
+DIRECTORY="$SYNC_DETAIL_DIR/$drive_folder_setup_loop_variables$folder_setup_loop_variables"
+PID_FILE="$DIRECTORY/pid"
+SUCCESS_LOG="$DIRECTORY/success_list"
+ERROR_LOG="$DIRECTORY/failed_list"
+LOGS="$DIRECTORY/logs"
+}
+_setup_loop_files(){
+mkdir -p "$DIRECTORY"
+for file in PID_FILE SUCCESS_LOG ERROR_LOG;do
+printf "" >>"$(eval printf "%s" \"\$"$file"\")"
+done
+PID="$(cat "$PID_FILE")"
+}
+_check_and_upload(){
+unset all_check_and_upload initial_check_and_upload new_files_check_and_upload new_file_check_and_upload aseen_check_and_upload
+initial_check_and_upload="$(cat "$SUCCESS_LOG")"
+all_check_and_upload="$(cat "$SUCCESS_LOG" "$ERROR_LOG")"
+[ "$(printf "%b\n" ./*)" = "./*" ]&&return 0
+all_check_and_upload="$all_check_and_upload
+$(_tmp='printf -- "%b\n" * '${INCLUDE_FILES:+| grep -E $INCLUDE_FILES}''&&eval "$_tmp")"
+exec 5<<EOF
+$(printf "%s\n" "$initial_check_and_upload")
+EOF
+exec 6<<EOF
+$(printf "%s\n" "$all_check_and_upload")
+EOF
+new_files_check_and_upload="$(eval grep -vExf /dev/fd/5 /dev/fd/6 -e '^$' $EXCLUDE_FILES||:)"
+exec 5<&-&&exec 6<&-
+[ -n "$new_files_check_and_upload" ]&&printf "" >|"$ERROR_LOG"&&{
+while read -r new_file_check_and_upload <&4&&case "$aseen_check_and_upload" in
+*"|:_//_:|$new_file_check_and_upload|:_//_:|"*)continue;;
+*)aseen_check_and_upload="$aseen_check_and_upload|:_//_:|$new_file_check_and_upload|:_//_:|"
+esac;do
+if eval "\"$COMMAND_PATH\"" "\"$new_file_check_and_upload\"" "$ARGS";then
+printf "%s\n" "$new_file_check_and_upload" >>"$SUCCESS_LOG"
+else
+printf "%s\n" "$new_file_check_and_upload" >>"$ERROR_LOG"
+printf "%s\n" "Error: Input - $new_file_check_and_upload"
+fi
+printf "\n"
+done 4<<EOF
+$(printf "%s\n" "$new_files_check_and_upload")
+EOF
+}
+return 0
+}
+_loop(){
+while :;do
+_check_and_upload
+sleep "$SYNC_TIME_TO_SLEEP"
+done
+}
+_check_existing_loop(){
+_setup_loop_variables "$FOLDER" "$GDRIVE_FOLDER"
+_setup_loop_files
+if [ -z "$PID" ];then
+RETURN_STATUS=0
+elif _check_pid "$PID";then
+RETURN_STATUS=1
+else
+_remove_job "$PID"
+_setup_loop_variables "$FOLDER" "$GDRIVE_FOLDER"
+_setup_loop_files
+RETURN_STATUS=2
+fi
+return 0
+}
+_start_new_loop(){
+if [ -n "$FOREGROUND" ];then
+printf "%b\n" "Local Folder: $INPUT\nDrive Folder: $GDRIVE_FOLDER\n"
+trap '_clear_line 1 && printf "\n" && _remove_job "" "${GDRIVE_FOLDER}" "${FOLDER}"; exit' INT TERM
+trap 'printf "Job stopped.\n" ; exit' EXIT
+_loop
+else
+(_loop 2>|"$LOGS" 1>&2)&
+PID="$!"
+printf "%s\n" "$PID" >|"$PID_FILE"
+printf "%b\n" "Local Folder: $INPUT\nDrive Folder: $GDRIVE_FOLDER\nPID: $PID"
+printf "%b\n" "PID: $PID|:_//_:|$FOLDER|:_//_:|$GDRIVE_FOLDER" >>"$SYNC_LIST"
+[ -n "$SHOW_LOGS" ]&&printf "\n"&&tail -f "$LOGS"
+fi
+return 0
+}
+_do_job(){
+case "$JOB" in
+*SHOW_JOBS*)_show_jobs "${SHOW_JOBS_VERBOSE:-}"
+exit
+;;
+*KILL_ALL*)\
+PIDS="$(_show_jobs|grep -o 'PID:.*[0-9]'|sed "s/PID: //g"||:)"&&\
+total=0
+[ -n "$PIDS" ]&&{
+for _pid in $PIDS;do
+printf "PID: %s - " "${_pid##* }"
+_kill_job "${_pid##* }"
+total="$((total+1))"
+done
+}
+printf "\nTotal Jobs Killed: %s\n" "$total"
+exit
+;;
+*PIDS*)unset Aseen&&while
+read -r pid <&4&&{ [ -n "$pid" ]||continue;}&&case "$Aseen" in
+*"|:_//_:|$pid|:_//_:|"*)continue;;
+*)Aseen="$Aseen|:_//_:|$pid|:_//_:|"
+esac
+do
+case "$JOB_TYPE" in
+*INFO*)_get_job_info "$pid" more
+[ "$RETURN_STATUS" -gt 0 ]&&{
+[ "$RETURN_STATUS" = 1 ]&&_remove_job "$pid"
+printf "No job running with given PID ( %s ).\n" "$pid" 1>&2
+}
+;;
+*)
+esac
+case "$JOB_TYPE" in
+*SHOW_LOGS*)\
+input="$(grep "$pid" "$SYNC_LIST"||:)"
+if [ -n "$input" ];then
+_check_pid "$pid"&&{
+_tmp="${input#*"|:_//_:|"}"&&local_folder="${_tmp%%"|:_//_:|"*/}"
+_setup_loop_variables "$local_folder" "${input##*"|:_//_:|"/}"
+tail -f "$LOGS"
+}
+else
+printf "No job running with given PID ( %s ).\n" "$pid" 1>&2
+fi
+;;
+*)
+esac
+case "$JOB_TYPE" in
+*KILL*)_get_job_info "$pid"
+if [ "$RETURN_STATUS" = 0 ];then
+_kill_job "$pid"
+else
+[ "$RETURN_STATUS" = 1 ]&&_remove_job "$pid"
+printf "No job running with given PID ( %s ).\n" "$pid" 1>&2
+fi
+;;
+*)
+esac
+done 4<<EOF
+$(printf "%s\n" "$ALL_PIDS")
+EOF
+case "$JOB_TYPE" in
+*INFO*|*SHOW_LOGS*|*KILL*)exit 0;;
+*)
+esac
+;;
+*)
+esac
+return 0
+}
+_setup_arguments(){
+[ $# = 0 ]&&printf "Missing arguments\n"&&return 1
+unset SYNC_TIME_TO_SLEEP ARGS COMMAND_NAME DEBUG GDRIVE_FOLDER KILL SHOW_LOGS
+COMMAND_NAME="gupload"
+_check_longoptions(){
+[ -z "$2" ]&&printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$1" "${0##*/}"&&exit 1
+return 0
+}
+while [ $# -gt 0 ];do
+case "$1" in
+-h|--help)_usage;;
+-D|--debug)DEBUG="true"&&export DEBUG&&_check_debug;;
+-d|--directory)_check_longoptions "$1" "$2"
+GDRIVE_FOLDER="$2"&&shift
+ARGS=" $ARGS -C \"$GDRIVE_FOLDER\" "
+;;
+-j|--jobs)case "$2" in
+v*)SHOW_JOBS_VERBOSE="true"&&shift;;
+*)
+esac
+JOB="SHOW_JOBS"
+;;
+-p|--pid)_check_longoptions "$1" "$2"
+if [ "$2" -gt 0 ] 2>|/dev/null 1>&2;then
+ALL_PIDS="$ALL_PIDS
+                              $2"&&shift
+JOB=" $JOBS PIDS "
+else
+printf "%s\n" "-p/--pid only takes postive integer as arguments."
+exit 1
+fi
+;;
+-i|--info)JOB_TYPE=" $JOB_TYPE INFO "&&INFO="true";;
+-k|--kill)\
+JOB_TYPE=" $JOB_TYPE KILL "&&\
+KILL="true"
+[ "$2" = all ]&&JOB="KILL_ALL"&&shift
+;;
+-l|--logs)JOB_TYPE=" $JOB_TYPE SHOW_LOGS "&&SHOW_LOGS="true";;
+-t|--time)_check_longoptions "$1" "$2"
+if [ "$2" -gt 0 ] 2>|/dev/null 1>&2;then
+case "$2" in
+default*)UPDATE_DEFAULT_TIME_TO_SLEEP="_update_config";;
+*)
+esac
+TO_SLEEP="${2##default=/}"&&shift
+else
+printf "%s\n" "-t/--time only takes positive integers as arguments, min = 1, max = infinity."
+exit 1
+fi
+;;
+-a|--arguments)_check_longoptions "$1" "$2"
+case "$2" in
+default*)UPDATE_DEFAULT_ARGS="_update_config";;
+*)
+esac
+ARGS=" $ARGS ${2##default=} "&&shift
+;;
+-fg|--foreground)FOREGROUND="true"&&SHOW_LOGS="true";;
+-in|--include)_check_longoptions "$1" "$2"
+INCLUDE_FILES="$INCLUDE_FILES -e '$2' "&&shift
+;;
+-ex|--exclude)_check_longoptions "$1" "$2"
+EXCLUDE_FILES="$EXCLUDE_FILES -e '$2' "&&shift
+;;
+-c|--command)_check_longoptions "$1" "$2"
+CUSTOM_COMMAND_NAME="$2"&&shift
+;;
+--sync-detail-dir)_check_longoptions "$1" "$2"
+SYNC_DETAIL_DIR="$2"&&shift
+;;
+-s|--service)_check_longoptions "$1" "$2"
+SERVICE_NAME="$2"&&shift
+CREATE_SERVICE="true"
+;;
+*)case "$1" in
+-*)printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$1" "${0##*/}"&&exit 1;;
+*)\
+FINAL_INPUT_ARRAY="$FINAL_INPUT_ARRAY
+                                           $1"
+esac
+esac
+shift
+done
+INFO_PATH="$HOME/.google-drive-upload"
+CONFIG_INFO="$INFO_PATH/google-drive-upload.configpath"
+[ -f "$CONFIG_INFO" ]&&. "$CONFIG_INFO"
+CONFIG="${CONFIG:-$HOME/.googledrive.conf}"
+SYNC_DETAIL_DIR="${SYNC_DETAIL_DIR:-$INFO_PATH/sync}"
+SYNC_LIST="$SYNC_DETAIL_DIR/sync_list"
+mkdir -p "$SYNC_DETAIL_DIR"&&printf "" >>"$SYNC_LIST"
+_do_job
+[ -z "$FINAL_INPUT_ARRAY" ]&&_short_help
+return 0
+}
+_config_variables(){
+COMMAND_NAME="${CUSTOM_COMMAND_NAME:-$COMMAND_NAME}"
+VALUES_LIST="REPO COMMAND_NAME SYNC_COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE"
+VALUES_REGEX=""&&for i in $VALUES_LIST;do
+VALUES_REGEX="${VALUES_REGEX:+$VALUES_REGEX|}^$i=\".*\".* # added values"
+done
+{
+COMMAND_PATH="$(command -v "$COMMAND_NAME")" 1>/dev/null&&SCRIPT_VALUES="$(grep -E "$VALUES_REGEX|^SELF_SOURCE=\".*\"" "$COMMAND_PATH"||:)"&&eval "$SCRIPT_VALUES"&&[ -n "${REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+$TYPE_VALUE}}}}" ]&&unset SOURCED_GUPLOAD
+}||{ printf "Error: %s is not installed, use -c/--command to specify.\n" "$COMMAND_NAME" 1>&2&&exit 1;}
+ARGS=" $ARGS -q "
+SYNC_TIME_TO_SLEEP="3"
+[ -r "$CONFIG" ]&&. "$CONFIG"
+SYNC_TIME_TO_SLEEP="${TO_SLEEP:-$SYNC_TIME_TO_SLEEP}"
+ARGS=" $ARGS ${SYNC_DEFAULT_ARGS:-} "
+"${UPDATE_DEFAULT_ARGS:-:}" SYNC_DEFAULT_ARGS " $ARGS " "$CONFIG"
+"${UPDATE_DEFAULT_TIME_TO_SLEEP:-:}" SYNC_TIME_TO_SLEEP "$SYNC_TIME_TO_SLEEP" "$CONFIG"
+return 0
+}
+_systemd_service_contents(){
+username_systemd_service_contents="${LOGNAME:?Give username}" install_path_systemd_service_contents="${INSTALL_PATH:?Missing install path}"
+cmd_systemd_service_contents="${COMMAND_NAME:?Missing command name}" sync_cmd_systemd_service_contents="${SYNC_COMMAND_NAME:?Missing gsync cmd name}"
+all_argumnets_systemd_service_contents="${ALL_ARGUMNETS:-}"
+printf "%s\n" '# Systemd service file - start
+[Unit]
+Description=google-drive-upload synchronisation service
+After=network.target
+
+[Service]
+Type=simple
+User='"$username_systemd_service_contents"'
+Restart=on-abort
+RestartSec=3
+ExecStart="'"$install_path_systemd_service_contents/$sync_cmd_systemd_service_contents"'" --foreground --command "'"$install_path_systemd_service_contents/$cmd_systemd_service_contents"'" --sync-detail-dir "/tmp/sync" '"$all_argumnets_systemd_service_contents"'
+
+# Security
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+# Systemd service file - end'
+}
+_systemd_service_script(){
+name_systemd_service_script="${1:?Missing service name}" script_systemd_service_script=""
+service_file_contents_systemd_service_script="${2:?Missing service file contents}" script_name_systemd_service_script="${3:?Missing script name}"
+script_systemd_service_script='#!/usr/bin/env sh
+set -e
+
+_usage() {
+    printf "%b" "# Service name: '"'$name_systemd_service_script'"'
+
+# Print the systemd service file contents
+sh \"${0##*/}\" print\n
+# Add service to systemd files ( this must be run before doing any of the below )
+sh \"${0##*/}\" add\n
+# Start or Stop the service
+sh \"${0##*/}\" start / stop\n
+# Enable or Disable as a boot service:
+sh \"${0##*/}\" enable / disable\n
+# See logs
+sh \"${0##*/}\" logs\n
+# Remove the service from system
+sh \"${0##*/}\" remove\n\n"
+
+    _status
+    exit 0
+}
+
+_status() {
+    status_status="" current_status_status=""
+    status_status="$(systemctl status '"'$name_systemd_service_script'"' 2>&1 || :)"
+    current_status_status="$(printf "%s\n" "${status_status}" | env grep -E "●.*|(Loaded|Active|Main PID|Tasks|Memory|CPU): .*" || :)"
+
+    printf "%s\n" "Current status of service: ${current_status_status:-${status_status}}"
+    return 0
+}
+
+unset TMPFILE
+
+[ $# = 0 ] && _usage
+
+CONTENTS='"'$service_file_contents_systemd_service_script'"'
+
+_add_service() {
+    service_file_path_add_service="/etc/systemd/system/'"$name_systemd_service_script"'.service"
+    printf "%s\n" "Service file path: ${service_file_path_add_service}"
+    if [ -f "${service_file_path_add_service}" ]; then
+        printf "%s\n" "Service file already exists. Overwriting"
+        sudo mv "${service_file_path_add_service}" "${service_file_path_add_service}.bak" || exit 1
+        printf "%s\n" "Existing service file was backed up."
+        printf "%s\n" "Old service file: ${service_file_path_add_service}.bak"
+    else
+        [ -z "${TMPFILE}" ] && {
+        { { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } ||
+                TMPFILE="$(pwd)/.$(_t="$(date +"%s")" && printf "%s\n" "$((_t * _t))").LOG"; } || exit 1
+        }
+        export TMPFILE
+        trap "exit" INT TERM
+        _rm_tmpfile() { rm -f "${TMPFILE:?}" ; }
+        trap "_rm_tmpfile" EXIT
+        trap "" TSTP # ignore ctrl + z
+
+        { printf "%s\n" "${CONTENTS}" >|"${TMPFILE}" && sudo cp "${TMPFILE}" /etc/systemd/system/'"$name_systemd_service_script"'.service; } ||
+            { printf "%s\n" "Error: Failed to add service file to system." && exit 1 ;}
+    fi
+    sudo systemctl daemon-reload || printf "%s\n" "Could not reload the systemd daemon."
+    printf "%s\n" "Service file was successfully added."
+    return 0
+}
+
+_service() {
+    service_name_service='"'$name_systemd_service_script'"' action_service="${1:?}" service_file_path_service=""
+    service_file_path_service="/etc/systemd/system/${service_name_service}.service"
+    printf "%s\n" "Service file path: ${service_file_path_service}"
+    [ -f "${service_file_path_service}" ] || { printf "%s\n" "Service file does not exist." && exit 1; }
+    sudo systemctl daemon-reload || exit 1
+    case "${action_service}" in
+        log*) sudo journalctl -u "${service_name_service}" -f ;;
+        rm | remove)
+            sudo systemctl stop "${service_name_service}" || :
+            if  sudo rm -f /etc/systemd/system/"${service_name_service}".service; then
+                sudo systemctl daemon-reload || :
+                printf "%s\n" "Service removed." && return 0
+            else
+                printf "%s\n" "Error: Cannot remove." && exit 1
+            fi
+            ;;
+        *)
+            success_service="${2:?}" error_service="${3:-}"
+            if sudo systemctl "${action_service}" "${service_name_service}"; then
+                printf "%s\n" "Success: ${service_name_service} ${success_service}." && return 0
+            else
+                printf "%s\n" "Error: Cannot ${action_service} ${service_name_service} ${error_service}." && exit 1
+            fi
+            ;;
+    esac
+    return 0
+}
+
+while [ "${#}" -gt 0 ]; do
+    case "${1}" in
+        print) printf "%s\n" "${CONTENTS}" ;;
+        add) _add_service ;;
+        start) _service start started ;;
+        stop) _service stop stopped ;;
+        enable) _service enable "boot service enabled" "boot service" ;;
+        disable) _service disable "boot service disabled" "boot service" ;;
+        logs) _service logs ;;
+        remove) _service rm ;;
+        *) printf "%s\n" "Error: No valid options provided." && _usage ;;
+    esac
+    shift
+done'
+printf "%s\n" "$script_systemd_service_script" >|"$script_name_systemd_service_script"
+return 0
+}
+_process_arguments(){
+unset status_process_arguments_process_arguments current_folder_process_arguments_process_arguments Aseen
+while read -r INPUT <&4&&{ [ -n "$INPUT" ]||continue;}&&case "$Aseen" in
+*"|:_//_:|$INPUT|:_//_:|"*)continue;;
+*)Aseen="$Aseen|:_//_:|$INPUT|:_//_:|"
+esac;do
+! [ -d "$INPUT" ]&&printf "\nError: Invalid Input ( %s ), no such directory.\n" "$INPUT"&&continue
+current_folder_process_arguments="$(pwd)"
+FOLDER="$(cd "$INPUT"&&pwd)"||exit 1
+[ -n "$DEFAULT_ACCOUNT" ]&&_set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${DEFAULT_ACCOUNT}_ROOT_FOLDER_NAME"
+GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME:-Unknown}}"
+[ -n "$CREATE_SERVICE" ]&&{
+ALL_ARGUMNETS="\"$FOLDER\" ${TO_SLEEP:+-t \"$TO_SLEEP\"} -a \"$ARGS\""
+num_process_arguments="${num_process_arguments+$(printf "%s\n" $((num_process_arguments+1)))}"
+service_name_process_arguments="gsync-$SERVICE_NAME${num_process_arguments:+_$num_process_arguments}"
+script_name_process_arguments="$service_name_process_arguments.service.sh"
+_systemd_service_script "$service_name_process_arguments" "$(_systemd_service_contents)" "$script_name_process_arguments"
+_print_center "normal" "=" "="
+sh "$script_name_process_arguments"
+_print_center "normal" "=" "="
+continue
+}
+cd "$FOLDER"||exit 1
+_check_existing_loop
+case "$RETURN_STATUS" in
+0|2)_start_new_loop;;
+1)printf "%b\n" "Job is already running.."
+if [ -n "$INFO" ];then
+_get_job_info "$PID" more "PID: $PID|:_//_:|$FOLDER|:_//_:|$GDRIVE_FOLDER"
+else
+printf "%b\n" "Local Folder: $INPUT\nDrive Folder: $GDRIVE_FOLDER"
+printf "%s\n" "PID: $PID"
+fi
+[ -n "$KILL" ]&&_kill_job "$PID"&&exit
+[ -n "$SHOW_LOGS" ]&&tail -f "$LOGS"
+;;
+*)
+esac
+cd "$current_folder_process_arguments"||exit 1
+done 4<<EOF
+$(printf "%s\n" "$FINAL_INPUT_ARRAY")
+EOF
+return 0
+}
+main(){
+[ $# = 0 ]&&_short_help
+set -o noclobber
+if [ -z "$SELF_SOURCE" ];then
+UTILS_FOLDER="${UTILS_FOLDER:-$PWD}"
+{ . "$UTILS_FOLDER"/sh/common-utils.sh&&. "$UTILS_FOLDER"/common/common-utils.sh;}||{ printf "Error: Unable to source util files.\n"&&exit 1;}
+fi
+trap '' TSTP
+_setup_arguments "$@"
+_check_debug
+_config_variables
+_process_arguments
+}
+main "$@"

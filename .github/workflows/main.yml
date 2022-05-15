@@ -43,5 +43,5 @@ jobs:
           set -e
           { { command -v apt-get && sudo apt-get install snapd -yqq && sudo snap install shfmt ;} ||
             { command -v brew && brew install shfmt ;} ;} 2>| /dev/null 1>&2
-          sh merge.sh
+          sh release.sh
           { [ -n "$(git diff)" ] && printf "%s\n" "Error: Format scripts and run merge.sh before pushing the commits." && git diff && exit 1 ;} || :

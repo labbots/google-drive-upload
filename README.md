@@ -53,7 +53,6 @@ It utilizes google drive api v3 and google OAuth2.0 to generate access tokens an
 
 Installation and Usage documentation is available at [https://labbots.github.io/google-drive-upload/](https://labbots.github.io/google-drive-upload/)
 
-
 ## Reporting Issues
 
 | Issues Status | [![GitHub issues](https://img.shields.io/github/issues/labbots/google-drive-upload.svg?label=&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues/) | [![GitHub issues-closed](https://img.shields.io/github/issues-closed/labbots/google-drive-upload.svg?label=&color=success&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues?q=is%3Aissue+is%3Aclosed) |

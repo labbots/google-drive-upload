@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # shellcheck source=/dev/null
 
-set -o errexit -o noclobber
+set -o noclobber
 
 _usage() {
     printf "%s\n" "
@@ -13,7 +13,7 @@ Usage:
 
     ./${0##*/} add - authenticates a new user but will use the client id and secret if available. If not, then same as create flag.
 
-    ./${0##*/} refresh - gets a new access token. Make sure CLIENT_SECRET, CLIENT_ID and REFRESH_TOKEN is exported as an environment variable or CONFIG 
+    ./${0##*/} refresh - gets a new access token. Make sure CLIENT_SECRET, CLIENT_ID and REFRESH_TOKEN is exported as an environment variable or CONFIG
 
     ./${0##*/} help - show this help.
 
@@ -26,7 +26,7 @@ You can also export CLIENT_SECRET, CLIENT_ID and REFRESH_TOKEN as an environment
 }
 
 UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}"
-{ . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/auth-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+{ . "${UTILS_FOLDER}"/sh/common-utils.sh && . "${UTILS_FOLDER}"/common/common-utils.sh && . "${UTILS_FOLDER}"/common/auth-utils.sh; } || { printf "Error: Unable to source util files.\n" && exit 1; }
 
 [ $# = 0 ] && _usage
 
@@ -78,9 +78,10 @@ case "${1}" in
         [ -z "${CLIENT_SECRET}" ] && printf "%s\n" "Missing CLIENT_SECRET variable, make sure to export to use refresh option." && _usage
         [ -z "${REFRESH_TOKEN}" ] && printf "%s\n" "Missing REFRESH_TOKEN variable, make sure to export to use refresh option." && _usage
         ;;
+    *) ;;
 esac
 
-_check_account_credentials || exit 1
+_check_account_credentials "${DEFAULT_ACCOUNT:-dummy}" || exit 1
 [ -n "${CREATE_ACCOUNT}" ] && printf "Refresh Token: %s\n\n" "${REFRESH_TOKEN}" 1>&2
-printf "Access Token: %s\n" "${ACCESS_TOKEN}" 1>&2
+printf "Access Token: %s\n" "${ACCESS_TOKEN:-}" 1>&2
 exit 0

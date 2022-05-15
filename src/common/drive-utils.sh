@@ -2,9 +2,6 @@
 
 ###################################################
 # Search for an existing file on gdrive with write permission.
-# Globals: 3 variables, 2 functions
-#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
-#   Functions - _url_encode, _json_value
 # Arguments: 4
 #   ${1} = file name
 #   ${2} = root dir id of file
@@ -18,6 +15,7 @@
 #   https://developers.google.com/drive/api/v3/search-files
 ###################################################
 _check_existing_file() (
+    export EXTRA_LOG CURL_PROGRESS_EXTRA API_URL API_VERSION
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
     name_check_existing_file="${1}" rootdir_check_existing_file="${2}" mode_check_existing_file="${3}" param_value_check_existing_file="${4}"
     unset query_check_existing_file response_check_existing_file id_check_existing_file
@@ -41,9 +39,6 @@ _check_existing_file() (
 
 ###################################################
 # Copy/Clone a public gdrive file/folder from another/same gdrive account
-# Globals: 6 variables, 6 functions
-#   Variables - API_URL, API_VERSION, CURL_PROGRESS, LOG_FILE_ID, QUIET, ACCESS_TOKEN, DESCRIPTION_FILE
-#   Functions - _print_center, _check_existing_file, _json_value, _bytes_to_human, _clear_line, _json_escape
 # Arguments: 5
 #   ${1} = update or upload ( upload type )
 #   ${2} = file id to upload
@@ -58,10 +53,11 @@ _check_existing_file() (
 #   https://developers.google.com/drive/api/v2/reference/files/copy
 ###################################################
 _clone_file() {
+    export DESCRIPTION_FILE CHECK_MODE SKIP_DUPLICATES QUIET API_URL API_VERSION CURL_PROGRESS
     [ $# -lt 5 ] && printf "Missing arguments\n" && return 1
     job_clone_file="${1}" file_id_clone_file="${2}" file_root_id_clone_file="${3}" name_clone_file="${4}" size_clone_file="${5}" md5_clone_file="${6}"
     unset post_data_clone_file response_clone_file readable_size_clone_file description_clone_file && STRING="Cloned"
-    readable_size_clone_file="$(printf "%s\n" "${size_clone_file}" | _bytes_to_human)"
+    readable_size_clone_file="$(_bytes_to_human "${size_clone_file}")"
     escaped_name_clone_file="$(_json_escape j "${name_clone_file}")" print_name_clone_file="$(_json_escape p "${name_clone_file}")"
 
     # create description data
@@ -79,6 +75,7 @@ _clone_file() {
         case "${CHECK_MODE}" in
             2) check_value_type_clone_file="size" check_value_clone_file="${size_clone_file}" ;;
             3) check_value_type_clone_file="md5Checksum" check_value_clone_file="${md5_clone_file}" ;;
+            *) : ;;
         esac
         # Check if file actually exists.
         if file_check_json_clone_file="$(_check_existing_file "${escaped_name_clone_file}" "${file_root_id_clone_file}" "${check_value_type_clone_file}" "${check_value_clone_file}")"; then
@@ -121,9 +118,6 @@ _clone_file() {
 
 ###################################################
 # Create/Check directory in google drive.
-# Globals: 3 variables, 3 functions
-#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
-# Functions - _url_encode, _json_value, _json_escape
 # Arguments: 2
 #   ${1} = dir name
 #   ${2} = root dir id of given dir
@@ -132,6 +126,7 @@ _clone_file() {
 #   https://developers.google.com/drive/api/v3/folder
 ###################################################
 _create_directory() {
+    export EXTRA_LOG CURL_PROGRESS_EXTRA API_VERSION API_URL
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
     dirname_create_directory="${1##*/}" rootdir_create_directory="${2}"
     unset query_create_directory search_response_create_directory folder_id_create_directory
@@ -162,9 +157,6 @@ _create_directory() {
 
 ###################################################
 # Get information for a gdrive folder/file.
-# Globals: 3 variables, 1 function
-#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
-#   Functions - _json_value
 # Arguments: 2
 #   ${1} = folder/file gdrive id
 #   ${2} = information to fetch, e.g name, id
@@ -175,6 +167,7 @@ _create_directory() {
 #   https://developers.google.com/drive/api/v3/search-files
 ###################################################
 _drive_info() {
+    export EXTRA_LOG CURL_PROGRESS_EXTRA API_URL API_VERSION
     [ $# -lt 2 ] && printf "Missing arguments\n" && return 1
     folder_id_drive_info="${1}" fetch_drive_info="${2}"
     unset search_response_drive_info
@@ -190,7 +183,6 @@ _drive_info() {
 
 ###################################################
 # Extract ID from a googledrive folder/file url.
-# Globals: None
 # Arguments: 1
 #   ${1} = googledrive folder/file url.
 # Result: print extracted ID
@@ -202,6 +194,7 @@ _extract_id() {
         *'drive.google.com'*'id='*) _tmp="${id_extract_id##*id=}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
         *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) _tmp="${id_extract_id##*\/d\/}" && _tmp="${_tmp%%\/*}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
         *'drive.google.com'*'drive'*'folders'*) _tmp="${id_extract_id##*\/folders\/}" && _tmp="${_tmp%%\?*}" && id_extract_id="${_tmp%%\&*}" ;;
+        *) : ;;
     esac
     printf "%b" "${id_extract_id:+${id_extract_id}\n}"
 }
@@ -209,11 +202,6 @@ _extract_id() {
 ###################################################
 # Upload ( Create/Update ) files on gdrive.
 # Interrupted uploads can be resumed.
-# Globals: 8 variables, 11 functions
-#   Variables - API_URL, API_VERSION, QUIET, VERBOSE, VERBOSE_PROGRESS, CURL_PROGRESS, LOG_FILE_ID, ACCESS_TOKEN, DESCRIPTION_FILE
-#   Functions - _url_encode, _json_value, _json_escape, _print_center, _bytes_to_human, _check_existing_file
-#               _generate_upload_link, _upload_file_from_uri, _log_upload_session, _remove_upload_session
-#               _full_upload, _collect_file_info
 # Arguments: 3
 #   ${1} = update or upload ( upload type )
 #   ${2} = file to upload
@@ -227,6 +215,7 @@ _extract_id() {
 #   https://developers.google.com/drive/api/v3/reference/files/update
 ###################################################
 _upload_file() {
+    export QUIET DESCRIPTION_FILE CHECK_MODE SKIP_DUPLICATES API_URL API_VERSION INFO_PATH
     [ $# -lt 3 ] && printf "Missing arguments\n" && return 1
     job_upload_file="${1}" input_upload_file="${2}" folder_id_upload_file="${3}"
     unset slug_upload_file inputname_upload_file extension_upload_file inputsize_upload_file readable_size_upload_file request_method_upload_file \
@@ -238,7 +227,7 @@ _upload_file() {
     inputname_upload_file="${slug_upload_file%.*}"
     extension_upload_file="${slug_upload_file##*.}"
     inputsize_upload_file="$(($(wc -c < "${input_upload_file}")))" && content_length_upload_file="${inputsize_upload_file}"
-    readable_size_upload_file="$(printf "%s\n" "${inputsize_upload_file}" | _bytes_to_human)"
+    readable_size_upload_file="$(_bytes_to_human "${inputsize_upload_file}")"
 
     # Handle extension-less files
     [ "${inputname_upload_file}" = "${extension_upload_file}" ] && {
@@ -269,14 +258,15 @@ _upload_file() {
                 }
                 check_value_upload_file="${check_value_upload_file%% *}"
                 ;;
+            *) : ;;
         esac
         # Check if file actually exists, and create if not.
         if file_check_json_upload_file="$(_check_existing_file "${escaped_slug_upload_file}" "${folder_id_upload_file}" "${check_value_type_upload_file}" "${check_value_upload_file}")"; then
             if [ -n "${SKIP_DUPLICATES}" ]; then
                 # Stop upload if already exists ( -d/--skip-duplicates )
                 _collect_file_info "${file_check_json_upload_file}" "${print_slug_upload_file}" || return 1
-                _clear_line 1
-                "${QUIET:-_print_center}" "justify" "${print_slug_upload_file} already exists." "=" && return 0
+                STRING="Skipped" _normal_logging_upload
+                return 0
             else
                 request_method_upload_file="PATCH"
                 _file_id_upload_file="$(printf "%s\n" "${file_check_json_upload_file}" | _json_value id 1 1)" ||
@@ -310,7 +300,7 @@ _upload_file() {
                 uploaded_range_upload_file="$(raw_upload_file="$(curl --compressed -s -X PUT \
                     -H "Content-Range: bytes */${content_length_upload_file}" \
                     --url "${uploadlink_upload_file}" --globoff -D - || :)" &&
-                    printf "%s\n" "${raw_upload_file##*[R,r]ange: bytes=0-}" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)"
+                    printf "%s\n" "${raw_upload_file##*[R,r]ange: bytes=0-}" | while read -r line; do printf "%s\n" "${line%%"$(printf '\r')"}" && break; done)"
                 if [ "${uploaded_range_upload_file}" -gt 0 ] 2>| /dev/null; then
                     _print_center "justify" "Resuming interrupted upload.." "-" && _newline "\n"
                     content_range_upload_file="$(printf "bytes %s-%s/%s\n" "$((uploaded_range_upload_file + 1))" "$((inputsize_upload_file - 1))" "${inputsize_upload_file}")"
@@ -334,6 +324,7 @@ _upload_file() {
                 _normal_logging_upload
                 _remove_upload_session
                 ;;
+            *) : ;;
         esac
     else
         _full_upload || return 1
@@ -345,20 +336,20 @@ _upload_file() {
 # Sub functions for _upload_file function - Start
 # generate resumable upload link
 _generate_upload_link() {
-    "${EXTRA_LOG}" "justify" "Generating upload link.." "-" 1>&2
-    uploadlink_upload_file="$(_api_request "${CURL_PROGRESS_EXTRA}" \
+    "${EXTRA_LOG:-}" "justify" "Generating upload link.." "-" 1>&2
+    uploadlink_upload_file="$(_api_request "${CURL_PROGRESS_EXTRA:-}" \
         -X "${request_method_upload_file}" \
         -H "Content-Type: application/json; charset=UTF-8" \
         -H "X-Upload-Content-Type: ${mime_type_upload_file}" \
         -H "X-Upload-Content-Length: ${inputsize_upload_file}" \
-        -d "$postdata_upload_file" \
+        -d "${postdata_upload_file}" \
         "${url_upload_file}" \
         -D - || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     case "${uploadlink_upload_file}" in
-        *'ocation: '*'upload_id'*) uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)" && return 0 ;;
-        '' | *) return 1 ;;
+        *'ocation: '*'upload_id'*) uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%"$(printf '\r')"}" && break; done)" && return 0 ;;
+        *) return 1 ;;
     esac
 
     return 0
@@ -367,8 +358,8 @@ _generate_upload_link() {
 # Curl command to push the file to google drive.
 _upload_file_from_uri() {
     _print_center "justify" "Uploading.." "-"
-    # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_PROGRESS} won't be anything problematic.
-    upload_body_upload_file="$(_api_request ${CURL_PROGRESS} \
+    # shellcheck disable=SC2086,SC2248 # Because unnecessary to another check because ${CURL_PROGRESS} won't be anything problematic.
+    upload_body_upload_file="$(_api_request ${CURL_PROGRESS:-} \
         -X PUT \
         -H "Content-Type: ${mime_type_upload_file}" \
         -H "Content-Length: ${content_length_upload_file}" \
@@ -377,16 +368,16 @@ _upload_file_from_uri() {
         -o- \
         --url "${uploadlink_upload_file}" \
         --globoff \
-        ${CURL_SPEED} ${resume_args1_upload_file} ${resume_args2_upload_file} \
+        ${CURL_SPEED:-} ${resume_args1_upload_file:-} ${resume_args2_upload_file:-} \
         -H "${resume_args3_upload_file}" || :)"
-    [ -z "${VERBOSE_PROGRESS}" ] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
+    [ -z "${VERBOSE_PROGRESS:-}" ] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
     return 0
 }
 
 # logging in case of successful upload
 _normal_logging_upload() {
-    [ -z "${VERBOSE_PROGRESS}" ] && _clear_line 1
-    "${QUIET:-_print_center}" "justify" "${slug_upload_file} " "| ${readable_size_upload_file} | ${STRING}" "="
+    [ -z "${VERBOSE_PROGRESS:-}" ] && _clear_line 1
+    "${QUIET:-_print_center}" "justify" "${slug_upload_file} " "| ${readable_size_upload_file} | ${STRING:-}" "="
     return 0
 }
 
@@ -417,9 +408,6 @@ _full_upload() {
 
 ###################################################
 # Share a gdrive file/folder
-# Globals: 3 variables, 4 functions
-#   Variables - API_URL, API_VERSION, ACCESS_TOKEN
-#   Functions - _url_encode, _json_value, _print_center, _clear_line
 # Arguments: 2
 #   ${1} = gdrive ID of folder/file
 #   ${2} = Email to which file will be shared ( optional )

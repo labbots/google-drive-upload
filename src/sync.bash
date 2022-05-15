@@ -42,7 +42,6 @@ _short_help() {
 
 ###################################################
 # Check if a pid exists by using ps
-# Globals: None
 # Arguments: 1
 #   ${1} = pid number of a sync job
 # Result: return 0 or 1
@@ -53,9 +52,6 @@ _check_pid() {
 
 ###################################################
 # Show information about a specific sync job
-# Globals: 1 variable, 2 functions
-#   Variable - SYNC_LIST
-#   Functions - _check_pid, _setup_loop_variables
 # Arguments: 1
 #   ${1} = pid number of a sync job
 #   ${2} = anything: Prints extra information ( optional )
@@ -95,11 +91,8 @@ _get_job_info() {
 
 ###################################################
 # Remove a sync job information from database
-# Globals: 2 variables
-#   SYNC_LIST, SYNC_DETAIL_DIR
 # Arguments: 1
 #   ${1} = pid number of a sync job
-# Result: read description
 ###################################################
 _remove_job() {
     declare pid="${1}" input local_folder drive_folder new_list
@@ -120,11 +113,8 @@ _remove_job() {
 
 ###################################################
 # Kill a sync job and do _remove_job
-# Globals: 1 function
-#   _remove_job
 # Arguments: 1
 #   ${1} = pid number of a sync job
-# Result: read description
 ###################################################
 _kill_job() {
     declare pid="${1}"
@@ -135,12 +125,8 @@ _kill_job() {
 
 ###################################################
 # Show total no of sync jobs running
-# Globals: 1 variable, 2 functions
-#   Variable - SYNC_LIST
-#   Functions - _get_job_info, _remove_job
 # Arguments: 1
 #   ${1} = v/verbose: Prints extra information ( optional )
-# Result: read description
 ###################################################
 _show_jobs() {
     declare list pid total=0
@@ -162,11 +148,8 @@ _show_jobs() {
 
 ###################################################
 # Setup required variables for a sync job
-# Globals: 1 Variable
-#   SYNC_DETAIL_DIR
 # Arguments: 1
 #   ${1} = Local folder name which will be synced
-# Result: read description
 ###################################################
 _setup_loop_variables() {
     declare folder="${1}" drive_folder="${2}"
@@ -179,10 +162,6 @@ _setup_loop_variables() {
 
 ###################################################
 # Create folder and files for a sync job
-# Globals: 4 variables
-#   DIRECTORY, PID_FILE, SUCCESS_LOG, ERROR_LOG
-# Arguments: None
-# Result: read description
 ###################################################
 _setup_loop_files() {
     mkdir -p "${DIRECTORY}"
@@ -195,10 +174,6 @@ _setup_loop_files() {
 ###################################################
 # Check for new files in the sync folder and upload it
 # A list is generated everytime, success and error.
-# Globals: 4 variables
-#   SUCCESS_LOG, ERROR_LOG, COMMAND_NAME, ARGS, GDRIVE_FOLDER
-# Arguments: None
-# Result: read description
 ###################################################
 _check_and_upload() {
     declare all initial new_files new_file
@@ -232,11 +207,6 @@ _check_and_upload() {
 
 ###################################################
 # Loop _check_and_upload function, sleep for sometime in between
-# Globals: 1 variable, 1 function
-#   Variable - SYNC_TIME_TO_SLEEP
-#   Function - _check_and_upload
-# Arguments: None
-# Result: read description
 ###################################################
 _loop() {
     while :; do
@@ -247,10 +217,6 @@ _loop() {
 
 ###################################################
 # Check if a loop exists with given input
-# Globals: 3 variables, 3 function
-#   Variable - FOLDER, PID, GDRIVE_FOLDER
-#   Function - _setup_loop_variables, _setup_loop_files, _check_pid
-# Arguments: None
 # Result: return 0 - No existing loop, 1 - loop exists, 2 - loop only in database
 #   if return 2 - then remove entry from database
 ###################################################
@@ -273,12 +239,7 @@ _check_existing_loop() {
 ###################################################
 # Start a new sync job by _loop function
 # Print sync job information
-# Globals: 7 variables, 1 function
-#   Variable - LOGS, PID_FILE, INPUT, GDRIVE_FOLDER, FOLDER, SYNC_LIST, FOREGROUND
-#   Function - _loop
-# Arguments: None
-# Result: read description
-#   Show logs at last and don't hangup if SHOW_LOGS is set
+# Result: Show logs at last and don't hangup if SHOW_LOGS is set
 ###################################################
 _start_new_loop() {
     if [[ -n ${FOREGROUND} ]]; then
@@ -301,11 +262,6 @@ _start_new_loop() {
 ###################################################
 # Triggers in case either -j & -k or -l flag ( both -k|-j if with positive integer as argument )
 # Priority: -j > -i > -l > -k
-# Globals: 5 variables, 6 functions
-#   Variables - JOB, SHOW_JOBS_VERBOSE, INFO_PID, LOG_PID, KILL_PID ( all array )
-#   Functions - _check_pid, _setup_loop_variables
-#               _kill_job, _show_jobs, _get_job_info, _remove_job
-# Arguments: None
 # Result: show either job info, individual info or kill job(s) according to set global variables.
 #   Script exits after -j and -k if kill all is triggered )
 ###################################################
@@ -366,9 +322,6 @@ _do_job() {
 
 ###################################################
 # Process all arguments given to the script
-# Globals: 1 variable, 3 functions
-#   Variable - HOME
-#   Functions - _kill_jobs, _show_jobs, _get_job_info
 # Arguments: Many
 #   ${@} = Flags with arguments
 # Result: On
@@ -483,11 +436,6 @@ _setup_arguments() {
 
 ###################################################
 # Grab config variables and modify defaults if necessary
-# Globals: 5 variables, 2 functions
-#   Variables - INFO_PATH, UPDATE_DEFAULT_CONFIG, DEFAULT_ARGS
-#               UPDATE_DEFAULT_ARGS, UPDATE_DEFAULT_TIME_TO_SLEEP, TIME_TO_SLEEP
-#   Functions - _print_center, _update_config
-# Arguments: None
 # Result: grab COMMAND_NAME, INSTALL_PATH, and CONFIG
 #   source CONFIG, update default values if required
 ###################################################
@@ -520,9 +468,6 @@ _config_variables() {
 
 ###################################################
 # Print systemd service file contents
-# Globals: 5 variables
-# Variables - LOGNAME, INSTALL_PATH, COMMAND_NAME, SYNC_COMMAND_NAME, ALL_ARGUMNETS
-# Arguments: None
 ###################################################
 _systemd_service_contents() {
     declare username="${LOGNAME:?Give username}" install_path="${INSTALL_PATH:?Missing install path}" \
@@ -561,7 +506,6 @@ WantedBy=multi-user.target
 
 ###################################################
 # Create systemd service wrapper script for managing the service
-# Globals: None
 # Arguments: 3
 #   ${1} = Service name
 #   ${1} = Service file contents
@@ -688,11 +632,6 @@ done'
 
 ###################################################
 # Process all the values in "${FINAL_INPUT_ARRAY[@]}"
-# Globals: 20 variables, 15 functions
-#   Variables - FINAL_INPUT_ARRAY ( array ), DEFAULT_ACCOUNT, ROOT_FOLDER_NAME, GDRIVE_FOLDER
-#               PID_FILE, SHOW_LOGS, LOGS, KILL, INFO, CREATE_SERVICE, ARGS, SERVICE_NAME
-# Functions - _set_value, _systemd_service_script, _systemd_service_contents, _print_center, _check_existing_loop, _start_new_loop
-# Arguments: None
 # Result: Start the sync jobs for given folders, if running already, don't start new.
 #   If a pid is detected but not running, remove that job.
 #   If service script is going to be created then don,t touch the jobs
@@ -745,11 +684,11 @@ _process_arguments() {
 main() {
     [[ $# = 0 ]] && _short_help
 
-    set -o errexit -o noclobber -o pipefail
+    set -o noclobber -o pipefail
 
     [[ -z ${SELF_SOURCE} ]] && {
         UTILS_FOLDER="${UTILS_FOLDER:-${PWD}}"
-        { . "${UTILS_FOLDER}"/common-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+        { . "${UTILS_FOLDER}"/bash/common-utils.bash && . "${UTILS_FOLDER}"/common/common-utils.sh; } || { printf "Error: Unable to source util files.\n" && exit 1; }
     }
 
     trap '' TSTP # ignore ctrl + z

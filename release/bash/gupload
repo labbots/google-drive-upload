@@ -1,0 +1,1964 @@
+#!/usr/bin/env bash
+SELF_SOURCE="true"
+set -a
+_assert_regex(){
+declare pattern="${1:?Error: Missing pattern}" string="${2:?Missing string}"
+if [[ $string =~ $pattern ]];then
+return 0
+else
+return 1
+fi
+}
+cat(){
+for file in "$@";do
+printf "%s\n" "$(<"$file")"
+done
+}
+_count(){
+mapfile -tn 0 lines
+printf '%s\n' "${#lines[@]}"
+}
+_epoch(){
+printf '%(%s)T\n' "-1"
+}
+_required_column_size(){
+shopt -s checkwinsize&&(:&&:)
+if [[ $COLUMNS -gt 45 ]];then
+trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
+return 0
+else
+return 1
+fi
+}
+_set_value(){
+case "${1:?}" in
+d|direct)export "${2:?}=$3";;
+i|indirect)export "${2:?}=${!3}";;
+*)return 1
+esac
+}
+_trim(){
+declare char="$1" str="$2" var="$3"
+if [[ -n $var ]];then
+_set_value d "$var" "${str//$char/}"
+else
+printf "%s" "${str//$char/}"
+fi
+}
+_url_encode(){
+declare LC_ALL=C
+for ((i=0; i<${#1}; i++));do
+: "${1:i:1}"
+case "$_" in
+[a-zA-Z0-9.~_-])printf '%s' "$_"
+;;
+*)printf '%%%02X' "'$_"
+esac
+done 2>|/dev/null
+printf '\n'
+}
+_auto_update(){
+export COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE REPO LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL
+command -v "$COMMAND_NAME" 1>/dev/null&&if [ -n "${REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+$TYPE_VALUE}}}}" ];then
+current_time="$(_epoch)"
+[ "$((LAST_UPDATE_TIME+AUTO_UPDATE_INTERVAL))" -lt "$(_epoch)" ]&&_update update
+_update_value LAST_UPDATE_TIME "$current_time"
+fi
+return 0
+}
+_update(){
+job_update="${1:-update}"
+[ "${GLOBAL_INSTALL:-}" = true ]&&! [ "$(id -u)" = 0 ]&&printf "%s\n" "Error: Need root access to update."&&return 0
+[ "$job_update" = uninstall ]&&job_uninstall="--uninstall"
+_print_center "justify" "Fetching $job_update script.." "-"
+repo_update="${REPO:-labbots/google-drive-upload}" type_value_update="${TYPE_VALUE:-latest}" cmd_update="${COMMAND_NAME:-gupload}" path_update="${INSTALL_PATH:-$HOME/.gdrive-downloader/bin}"
+{ [ "${TYPE:-}" != branch ]&&type_value_update="$(_get_latest_sha release "$type_value_update" "$repo_update")";}||:
+if script_update="$(curl --compressed -Ls "https://github.com/$repo_update/raw/$type_value_update/install.sh")";then
+_clear_line 1
+printf "%s\n" "$script_update"|sh -n||{
+printf "%s\n" "Install script downloaded but malformed, try again and if the issue persists open an issue on github."
+return 1
+}
+printf "%s\n" "$script_update"|sh -s -- ${job_uninstall:-} --skip-internet-check --cmd "$cmd_update" --path "$path_update"
+current_time="$(date +'%s')"
+[ -z "$job_uninstall" ]&&_update_value LAST_UPDATE_TIME "$current_time"
+else
+_clear_line 1
+"${QUIET:-_print_center}" "justify" "Error: Cannot download" " $job_update script." "=" 1>&2
+return 1
+fi
+return 0
+}
+_update_value(){
+command_path="${INSTALL_PATH:?}/${COMMAND_NAME:?}"
+value_name="${1:?}" value="${2:-}"
+script_without_value_and_shebang="$(grep -v "$value_name=\".*\".* # added values" -- "$command_path"|sed 1d)"
+new_script="$(sed -n 1p -- "$command_path"
+printf "%s\n" "$value_name=\"$value\" # added values"
+printf "%s\n" "$script_without_value_and_shebang")"
+printf "%s\n" "$new_script"|"${INSTALLATION:-bash}" -n||{
+printf "%s\n" "Update downloaded but malformed, try again and if the issue persists open an issue on github."
+return 1
+}
+chmod u+w -- "$command_path"&&printf "%s\n" "$new_script" >|"$command_path"&&chmod "a-w-r-x,${PERM_MODE:-u}+r+x" -- "$command_path"
+return 0
+}
+_is_fd_open(){
+for fd in ${1:?};do
+if ! { true >&"$fd";} 2<>/dev/null;then
+printf "%s\n" "Error: fd $fd not open."
+return 1
+fi
+done
+}
+_parser_add_help(){
+_PARSER_ALL_HELP="$_PARSER_ALL_HELP
+${__PARSER_BAR:-}
+${1:-}" 2>|/dev/null
+}
+_parser_check_arguments(){
+nargs_parser_check_arguments="$((${1:?_parser_check_arguments}))"
+num_parser_check_arguments=$(($#-2))
+[ "$num_parser_check_arguments" -lt "$nargs_parser_check_arguments" ]&&{
+printf "%s\n" "${0##*/}: $2: flag requires $nargs_parser_check_arguments argument."
+printf "\n%s\n" "Help:"
+printf "%s\n" "$(_usage "$2")"
+exit 1
+}
+return 0
+}
+_flag_exists(){
+tmp_flag_exists="" option_flag_exists=""
+_flag_help "${1:?}" tmp_flag_exists option_flag_exists
+[ -z "$tmp_flag_exists" ]&&return 1
+_set_value d "${2:?}" "$option_flag_exists"
+}
+_flag_help(){
+flag_flag_help=""
+_trim "-" "${1:?_flag_help}" flag_flag_help
+_set_value i "${2:?_flag_help}" "_parser__help_$flag_flag_help"
+_set_value d "${3:-_}" "$flag_flag_help"
+}
+_parse_arguments(){
+__NEWLINE="
+"
+_parse_support_ansi_escapes(){
+case "$TERM" in
+xterm*|rxvt*|urxvt*|linux*|vt*|screen*){ [ -t 2 ]&&return 0;}||return 1;;
+*):
+esac
+{ [ -t 2 ]&&return 0;}||return 1
+}
+_parser_required_column_size(){
+COLUMNS="$({ command -v bash 1>|/dev/null&&bash -c 'shopt -s checkwinsize && (: && :); printf "%s\n" "${COLUMNS}" 2>&1';}||{ command -v zsh 1>|/dev/null&&zsh -c 'printf "%s\n" "${COLUMNS}"';}||{ command -v stty 1>|/dev/null&&_tmp="$(stty size)"&&printf "%s\n" "${_tmp##* }";}||{ command -v tput 1>|/dev/null&&tput cols;})"||:
+[ "$((COLUMNS))" -gt 45 ]&&return 0
+}
+_parse_support_ansi_escapes&&_parser_required_column_size&&__PARSER_BAR="$(\
+filler='' \
+symbol='_'
+i=1&&while [ "$i" -le "$COLUMNS" ];do
+filler="$filler$symbol"&&i="$((i+1))"
+done
+printf "%s\n" "$filler")"
+__PARSER_BAR="${__PARSER_BAR:+$__PARSER_BAR$__NEWLINE}"
+unset _PARSER_ALL_HELP _PARSER_ARGS_SHIFT _PARSER_PREPROCESS_FUNCTION
+unset _PARSER_FLAGS _PARSER_CURRENT_FLAGS _PARSER_CURRENT_NARGS _PARSER_CURRENT_ARGS _PARSER_CURRENT_ARGS_TYPE
+"${1:?_parse_arguments - 1: Missing funtion name to setup flags}"||return 1
+shift 2>|/dev/null
+_parser_run_preprocess||return 1
+while [ "$#" -gt 0 ];do
+case "$1" in
+''):;;
+--)shift
+while [ "$#" -gt 0 ];do
+_parser_process_input "$@"||return 1
+shift
+done
+;;
+-*)\
+flag_parse_arguments=""
+if _flag_exists "$1" flag_parse_arguments;then
+"_parser_process_$flag_parse_arguments" "$@"||return 1
+else
+printf "%s\n\n" "${0##*/}: $1: Unknown option"
+_short_help
+fi
+;;
+*)_parser_process_input "$@"||return 1
+esac
+_PARSER_ARGS_SHIFT="$((_PARSER_ARGS_SHIFT+1))"
+shift "$_PARSER_ARGS_SHIFT"
+_PARSER_ARGS_SHIFT="0"
+done
+return 0
+}
+_parser_setup_flag(){
+_PARSER_CURRENT_FLAGS="" tmp_parser_setup_flag=""
+_PARSER_FLAGS="${1:?_parser_setup_flag}"
+for f in $_PARSER_FLAGS;do
+_trim "-" "$f" tmp_parser_setup_flag
+_PARSER_CURRENT_FLAGS="$_PARSER_CURRENT_FLAGS $tmp_parser_setup_flag"
+done
+_PARSER_CURRENT_NARGS="${2:?_parser_setup_flag}"
+_PARSER_CURRENT_ARGS_TYPE="$3"
+_PARSER_CURRENT_ARGS="$4"
+}
+_parser_setup_flag_help(){
+flags_parser_setup_flag_help="${_PARSER_CURRENT_FLAGS:?_parser_setup_flag_help}"
+nargs_parser_setup_flag_help="${_PARSER_CURRENT_NARGS:?_parser_setup_flag_help}"
+unset start_parser_setup_flag_help \
+help_parser_setup_flag_help \
+arg_parser_setup_flag_help \
+all_parser_setup_flag_help
+while IFS= read -r line <&4;do
+help_parser_setup_flag_help="$help_parser_setup_flag_help
+        $line"
+done 4<<EOF
+${1:?_parser_setup_flag_help}
+EOF
+for f in ${_PARSER_FLAGS:?_parser_setup_flag_help};do
+start_parser_setup_flag_help="${start_parser_setup_flag_help:+$start_parser_setup_flag_help | }$f"
+done
+if ! [ "$nargs_parser_setup_flag_help" = 0 ];then
+arg_parser_setup_flag_help="\"${_PARSER_CURRENT_ARGS:?_parser_setup_flag_help}\""
+if [ "$_PARSER_CURRENT_ARGS_TYPE" = optional ];then
+arg_parser_setup_flag_help="$arg_parser_setup_flag_help [ Optional ]"
+else
+arg_parser_setup_flag_help="$arg_parser_setup_flag_help [ Required ]"
+fi
+fi
+start_parser_setup_flag_help="    $start_parser_setup_flag_help $arg_parser_setup_flag_help"
+all_setup_help_flag="$start_parser_setup_flag_help${__NEWLINE:?}$help_parser_setup_flag_help"
+for f in $flags_parser_setup_flag_help;do
+_set_value d "_parser__help_$f" "$all_setup_help_flag"
+done
+[ "$_PARSER_FLAGS" = input ]&&return 0
+_PARSER_ALL_HELP="$_PARSER_ALL_HELP
+${__PARSER_BAR:-}
+$all_setup_help_flag" 2>|/dev/null
+}
+_parser_setup_flag_preprocess(){
+_is_fd_open 4||return 1
+unset fn_parser_setup_flag_preprocess
+while IFS= read -r line <&4;do
+fn_parser_setup_flag_preprocess="$fn_parser_setup_flag_preprocess
+$line"
+done
+_PARSER_PREPROCESS_FUNCTION="$_PARSER_PREPROCESS_FUNCTION
+$fn_parser_setup_flag_preprocess"
+}
+_parser_setup_flag_process(){
+_is_fd_open 4||return 1
+unset fn_parser_setup_flag_process
+if [ "${_PARSER_CURRENT_NARGS:?_parser_setup_flag_process}" -gt 0 ]&&! [ "$_PARSER_CURRENT_ARGS_TYPE" = optional ];then
+fn_parser_setup_flag_process="_parser_check_arguments ${_PARSER_CURRENT_NARGS:?_parser_setup_flag_process} \"\${@}\""
+fi
+while IFS= read -r line <&4;do
+fn_parser_setup_flag_process="$fn_parser_setup_flag_process
+$line"
+done
+for f in ${_PARSER_CURRENT_FLAGS:?_parser_setup_flag_process};do
+eval "_parser_process_$f() { $fn_parser_setup_flag_process ; }"
+done
+}
+_parser_run_preprocess(){
+eval "_parser_preprocess_setup() { ${_PARSER_PREPROCESS_FUNCTION:-:} ; }"&&_parser_preprocess_setup
+}
+_parser_shift(){
+export _PARSER_ARGS_SHIFT="${1:-1}"
+}
+_short_help(){
+printf "No valid arguments provided, use -h/--help flag to see usage.\n"
+exit 0
+}
+_set_value(){
+case "${1:?}" in
+d|direct)export "${2:?}=$3";;
+i|indirect)eval export "$2"=\"\$"$3"\";;
+*)return 1
+esac
+}
+_trim(){
+char_trim="$1" str_trim="$2" var_trim="$3"
+set -f
+old_ifs="$IFS"
+IFS="$char_trim"
+set -- $str_trim
+IFS=
+if [ -n "$var_trim" ];then
+_set_value d "$var_trim" "$*"
+else
+printf "%s" "$*"
+fi
+IFS="$old_ifs"
+set +f
+}
+_parser_setup_flags(){
+_parser_add_help "
+The script can be used to upload file/directory to google drive.
+
+Usage:
+${0##*/} [options.. ] <filename> <foldername>
+
+Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive root folder.
+
+File name argument is optional if create directory option is used.
+
+Options:"
+_parser_setup_flag "input" 0
+_parser_setup_flag_help \
+"Input files or drive ids to process."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset TOTAL_ID_INPUTS TOTAL_FILE_INPUTS
+EOF
+_parser_setup_flag_process 4<<'EOF'
+# set INPUT_FILE|ID_num to the input, where num is rank of input
+case "${1}" in
+    *drive.google.com* | *docs.google.com*) _set_value d "INPUT_ID_$((TOTAL_ID_INPUTS += 1))" "$(_extract_id "${1}")" ;;
+    *)
+        [ -r "${1}" ] || {
+            { "${QUIET:-_print_center}" 'normal' "[ Error: Invalid File - ${1} ]" "=" && printf "\n"; } 1>&2
+            return
+        }
+        _set_value d "INPUT_FILE_$((TOTAL_FILE_INPUTS += 1))" "${1}"
+        ;;
+esac
+EOF
+_parser_setup_flag "-a --account" 1 required "account name"
+_parser_setup_flag_help \
+"Use a different account than the default one.
+
+To change the default account name, use this format, -a/--account default=account_name"
+_parser_setup_flag_preprocess 4<<'EOF'
+unset OAUTH_ENABLED ACCOUNT_NAME ACCOUNT_ONLY_RUN CUSTOM_ACCOUNT_NAME UPDATE_DEFAULT_ACCOUNT
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export OAUTH_ENABLED="true" CUSTOM_ACCOUNT_NAME="${2##default=}"
+[ -z "${2##default=*}" ] && export UPDATE_DEFAULT_ACCOUNT="_update_config"
+_parser_shift
+EOF
+_parser_setup_flag "-la --list-accounts" 0
+_parser_setup_flag_help \
+"Print all configured accounts in the config files."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset LIST_ACCOUNTS
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export LIST_ACCOUNTS="true"
+EOF
+_parser_setup_flag "-ca --create-account" 1 required "account name"
+_parser_setup_flag_help \
+"To create a new account with the given name if does not already exists."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset OAUTH_ENABLED NEW_ACCOUNT_NAME
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export OAUTH_ENABLED="true"
+export NEW_ACCOUNT_NAME="${2}" && _parser_shift 
+EOF
+_parser_setup_flag "-da --delete-account" 1 required "account name"
+_parser_setup_flag_help \
+"To delete an account information from config file."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset DELETE_ACCOUNT_NAME
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export DELETE_ACCOUNT_NAME="${2}" && _parser_shift 
+EOF
+_parser_setup_flag "-c -C --create-dir" 1 required "foldername"
+_parser_setup_flag_help \
+"Option to create directory. Will print folder id. Can be used to provide input folder, see README."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset FOLDERNAME
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export FOLDERNAME="${2}" && _parser_shift
+EOF
+_parser_setup_flag "-r --root-dir" 1 required "google folder id or folder url containing id"
+_parser_setup_flag_help \
+"Google folder ID/URL to which the file/directory is going to upload.
+If you want to change the default value, then use this format, -r/--root-dir default=root_folder_id/root_folder_url"
+_parser_setup_flag_preprocess 4<<'EOF'
+unset ROOTDIR UPDATE_DEFAULT_ROOTDIR 
+EOF
+_parser_setup_flag_process 4<<'EOF'
+ROOTDIR="${2##default=}"
+[ -z "${2##default=*}" ] && export UPDATE_DEFAULT_ROOTDIR="_update_config"
+_parser_shift
+EOF
+_parser_setup_flag "-s --skip-subdirs" 0
+_parser_setup_flag_help \
+"Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset SKIP_SUBDIRS
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export SKIP_SUBDIRS="true"
+EOF
+_parser_setup_flag "-p --parallel" 1 required "no of files to parallely upload"
+_parser_setup_flag_help \
+"Upload multiple files in parallel, Max value = 10."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset NO_OF_PARALLEL_JOBS PARALLEL_UPLOAD
+EOF
+_parser_setup_flag_process 4<<'EOF'
+if [ "${2}" -gt 0 ] 2>| /dev/null 1>&2; then
+    export NO_OF_PARALLEL_JOBS="${2}"
+else
+    printf "\nError: -p/--parallel accepts values between 1 to 10.\n"
+    return 1
+fi
+export PARALLEL_UPLOAD="parallel" && _parser_shift
+EOF
+_parser_setup_flag "-cl --clone" 1 required "gdrive id or link"
+_parser_setup_flag_help \
+"Upload a gdrive file without downloading."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset TOTAL_ID_INPUTS
+EOF
+_parser_setup_flag_process 4<<'EOF'
+# set INPUT_FILE|ID_num to the input, where num is rank of input
+case "${1}" in
+    *drive.google.com* | *docs.google.com*) _set_value d "INPUT_ID_$((TOTAL_ID_INPUTS += 1))" "$(_extract_id "${1}")" ;;
+esac
+_parser_shift
+EOF
+_parser_setup_flag "-o --overwrite" 0
+_parser_setup_flag_help \
+"Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset OVERWRITE UPLOAD_MODE
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export OVERWRITE="Overwrite" UPLOAD_MODE="update"
+EOF
+_parser_setup_flag "-d --skip-duplicates" 0
+_parser_setup_flag_help \
+"Do not upload the files with the same name and size, if already present in the root folder/input folder, also works with recursive folders."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset SKIP_DUPLICATES UPLOAD_MODE
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export SKIP_DUPLICATES="Skip Existing" UPLOAD_MODE="update"
+EOF
+_parser_setup_flag "-cm --check-mode" 1 required "size or md5"
+_parser_setup_flag_help \
+"Additional flag for --overwrite and --skip-duplicates flag. Can be used to change check mode in those flags, available args are 'size' and 'md5'."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset CHECK_MODE
+EOF
+_parser_setup_flag_process 4<<'EOF'
+case "${2}" in
+    size) export CHECK_MODE="2" && _parser_shift ;;
+    md5) export CHECK_MODE="3" && _parser_shift ;;
+    *) printf "\nError: -cm/--check-mode takes size and md5 as argument.\n" ;;
+esac
+EOF
+_parser_setup_flag "-desc --description --description-all" 1 required "description of file"
+_parser_setup_flag_help \
+"Specify description for the given file. To use the respective metadata of a file, below is the format:
+
+File name ( fullname ): %f | Size: %s | Mime Type: %m
+
+Now to actually use it: --description 'Filename: %f, Size: %s, Mime: %m'
+
+Note: For files inside folders, use --description-all flag."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset DESCRIPTION DESCRIPTION_ALL
+EOF
+_parser_setup_flag_process 4<<'EOF'
+[ "${1}" = "--description-all" ] && export DESCRIPTION_ALL="true"
+export DESCRIPTION="${2}" && _parser_shift
+EOF
+_parser_setup_flag "-S --share" 1 required "email address"
+_parser_setup_flag_help \
+"Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset SHARE EMAIL_REGEX SHARE_EMAIL
+EOF
+_parser_setup_flag_process 4<<'EOF'
+SHARE="_share_id"
+EMAIL_REGEX="^(([A-Za-z0-9]+((\.|\-|\_|\+)?[A-Za-z0-9]?)*[A-Za-z0-9]+)|[A-Za-z0-9]+)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
+case "${2}" in
+    -* | '') : ;;
+    *)
+        if _assert_regex "${EMAIL_REGEX}" "${2}"; then
+            SHARE_EMAIL="${2}" && _parser_shift && export SHARE_EMAIL
+        fi
+        ;;
+esac
+SHARE_ROLE="${SHARE_ROLE:-reader}"
+EOF
+_parser_setup_flag "-SM -sm --share-mode" 1 required "share mode - r/w/c"
+_parser_setup_flag_help \
+"Specify the share mode for sharing file.
+
+        Share modes are: r / reader - Read only permission.
+
+                       : w / writer - Read and write permission.
+
+                       : c / commenter - Comment only permission.
+
+Note: Although this flag is independent of --share flag but when email is needed, then --share flag use is neccessary."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset SHARE_ROLE SHARE
+EOF
+_parser_setup_flag_process 4<<'EOF'
+case "${2}" in
+    r | read*) SHARE_ROLE="reader" ;;
+    w | write*) SHARE_ROLE="writer" ;;
+    c | comment*) SHARE_ROLE="commenter" ;;
+    *)
+        printf "%s\n" "Invalid share mode given ( ${2} ). Supported values are r or reader / w or writer / c or commenter." &&
+            exit 1
+        ;;
+esac
+SHARE="_share_id"
+_parser_shift
+EOF
+_parser_setup_flag "--speed" 1 required "speed"
+_parser_setup_flag_help \
+"Limit the download speed, supported formats: 1K, 1M and 1G."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset CURL_SPEED
+EOF
+_parser_setup_flag_process 4<<'EOF'
+_tmp_regex='^([0-9]+)([k,K]|[m,M]|[g,G])+$'
+if _assert_regex "${_tmp_regex}" "${2}"; then
+    export CURL_SPEED="--limit-rate ${2}" && _parser_shift
+else
+    printf "Error: Wrong speed limit format, supported formats: 1K , 1M and 1G\n" 1>&2
+    exit 1
+fi
+EOF
+_parser_setup_flag "-i --save-info" 1 required "file where to save info"
+_parser_setup_flag_help \
+"Save uploaded files info to the given filename."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset LOG_FILE_ID
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export LOG_FILE_ID="${2}" && _parser_shift
+EOF
+_parser_setup_flag "-z --config" 1 required "config path"
+_parser_setup_flag_help \
+"Override default config file with custom config file.
+If you want to change default value, then use this format -z/--config default=default=your_config_file_path."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset UPDATE_DEFAULT_CONFIG
+_check_config() {
+    [ -z "${1##default=*}" ] && export UPDATE_DEFAULT_CONFIG="_update_config"
+    { [ -r "${2}" ] && CONFIG="${2}"; } || {
+        printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
+    }
+    return 0
+}
+EOF
+_parser_setup_flag_process 4<<'EOF'
+_check_config "${2}" "${2/default=/}"
+_parser_shift
+EOF
+_parser_setup_flag "-q --quiet" 0
+_parser_setup_flag_help \
+"Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset QUIET
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export QUIET="_print_center_quiet"
+EOF
+_parser_setup_flag "-R --retry" 1 required "num of retries"
+_parser_setup_flag_help \
+"Retry the file upload if it fails, postive integer as argument. Currently only for file uploads."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset RETRY
+EOF
+_parser_setup_flag_process 4<<'EOF'
+if [ "$((2))" -gt 0 ] 2>| /dev/null 1>&2; then
+    export RETRY="${2}" && _parser_shift
+else
+    printf "Error: -R/--retry only takes positive integers as arguments, min = 1, max = infinity.\n"
+    exit 1
+fi
+EOF
+_parser_setup_flag "-in --include" 1 required "pattern"
+_parser_setup_flag_help \
+"Only include the files with the given pattern to upload - Applicable for folder uploads.
+
+e.g: ${0##*/} local_folder --include '*1*', will only include with files with pattern '1' in the name."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset INCLUDE_FILES
+EOF
+_parser_setup_flag_process 4<<'EOF'
+INCLUDE_FILES="${INCLUDE_FILES} -name '${2}' " && _parser_shift
+EOF
+_parser_setup_flag "-ex --exclude" 1 required "pattern"
+_parser_setup_flag_help \
+"Exclude the files with the given pattern from uploading. - Applicable for folder uploads.
+
+e.g: ${0##*/} local_folder --exclude "*1*", will exclude all the files pattern '1' in the name."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset EXCLUDE_FILES
+EOF
+_parser_setup_flag_process 4<<'EOF'
+EXCLUDE_FILES="${EXCLUDE_FILES} -name ! '${2}' " && _parser_shift
+EOF
+_parser_setup_flag "--hide" 0
+_parser_setup_flag_help \
+"This flag will prevent the script to print sensitive information like root folder id and drivelink."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset HIDE_INFO
+EOF
+_parser_setup_flag_process 4<<'EOF'
+HIDE_INFO=":"
+EOF
+_parser_setup_flag "-v --verbose" 0
+_parser_setup_flag_help \
+"Display detailed message (only for non-parallel uploads)."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset VERBOSE
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export VERBOSE="true"
+EOF
+_parser_setup_flag "-V --verbose-progress" 0
+_parser_setup_flag_help \
+"Display detailed message and detailed upload progress(only for non-parallel uploads)."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset VERBOSE_PROGRESS
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export VERBOSE_PROGRESS="true"
+EOF
+_parser_setup_flag "--skip-internet-check" 0
+_parser_setup_flag_help \
+"Do not check for internet connection, recommended to use in sync jobs."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset SKIP_INTERNET_CHECK
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export SKIP_INTERNET_CHECK=":"
+EOF
+_parser_setup_flag "-V --version --info" 0
+_parser_setup_flag_help \
+"Show detailed info, only if script is installed system wide."
+_parser_setup_flag_preprocess 4<<'EOF'
+###################################################
+# Print info if installed
+###################################################
+_version_info() {
+    export COMMAND_NAME REPO INSTALL_PATH TYPE TYPE_VALUE
+    if command -v "${COMMAND_NAME}" 1> /dev/null && [ -n "${REPO:+${COMMAND_NAME:+${INSTALL_PATH:+${TYPE:+${TYPE_VALUE}}}}}" ]; then
+        for i in REPO INSTALL_PATH INSTALLATION TYPE TYPE_VALUE LATEST_INSTALLED_SHA CONFIG; do
+            value_version_info=""
+            _set_value i value_version_info "${i}"
+            printf "%s\n" "${i}=${value_version_info}"
+        done | sed -e "s/=/: /g"
+    else
+        printf "%s\n" "google-drive-upload is not installed system wide."
+    fi
+    exit 0
+}
+EOF
+_parser_setup_flag_process 4<<'EOF'
+_version_info
+EOF
+_parser_setup_flag "-D --debug" 0
+_parser_setup_flag_help \
+"Display script command trace."
+_parser_setup_flag_preprocess 4<<'EOF'
+unset DEBUG
+EOF
+_parser_setup_flag_process 4<<'EOF'
+export DEBUG="true"
+EOF
+_parser_setup_flag "-h --help" 1 optional "flag name"
+_parser_setup_flag_help \
+"Print help for all flags and basic usage instructions.
+
+To see help for a specific flag, --help flag_name ( with or without dashes )
+    e.g: ${0##*/} --help aria"
+_parser_setup_flag_preprocess 4<<'EOF'
+###################################################
+# 1st arg - can be flag name
+# if 1st arg given, print specific flag help
+# otherwise print full help
+###################################################
+_usage() {
+    [ -n "${1}" ] && {
+        help_usage_usage=""
+        _flag_help "${1}" help_usage_usage
+
+        if [ -z "${help_usage_usage}" ]; then
+            printf "%s\n" "Error: No help found for ${1}"
+        else
+            printf "%s\n%s\n%s\n" "${__PARSER_BAR}" "${help_usage_usage}" "${__PARSER_BAR}"
+        fi
+        exit 0
+    }
+
+    printf "%s\n" "${_PARSER_ALL_HELP}"
+    exit 0
+}
+EOF
+_parser_setup_flag_process 4<<'EOF'
+_usage "${2}"
+EOF
+[ "${GUPLOAD_INSTALLED_WITH:-}" = script ]&&{
+_parser_setup_flag "-u --update" 0
+_parser_setup_flag_help \
+"Update the installed script in your system."
+_parser_setup_flag_process 4<<'EOF'
+_check_debug && _update && { exit 0 || exit 1; }
+EOF
+_parser_setup_flag "--uninstall" 0
+_parser_setup_flag_help \
+"Uninstall script, remove related files."
+_parser_setup_flag_process 4<<'EOF'
+_check_debug && _update uninstall && { exit 0 || exit 1; }
+EOF
+}
+return 0
+}
+_account_name_valid(){
+name_account_name_valid="${1:?}" account_name_regex_account_name_valid='^([A-Za-z0-9_])+$'
+_assert_regex "$account_name_regex_account_name_valid" "$name_account_name_valid"||return 1
+return 0
+}
+_account_exists(){
+name_account_exists="${1:-}" client_id_account_exists="" client_secret_account_exists="" refresh_token_account_exists=""
+_account_name_valid "$name_account_exists"||return 1
+_set_value indirect client_id_account_exists "ACCOUNT_${name_account_exists}_CLIENT_ID"
+_set_value indirect client_secret_account_exists "ACCOUNT_${name_account_exists}_CLIENT_SECRET"
+_set_value indirect refresh_token_account_exists "ACCOUNT_${name_account_exists}_REFRESH_TOKEN"
+[ -z "${client_id_account_exists:+${client_secret_account_exists:+$refresh_token_account_exists}}" ]&&return 1
+return 0
+}
+_all_accounts(){
+export CONFIG QUIET
+{ _reload_config&&_handle_old_config;}||return 1
+COUNT=0
+while read -r account <&4&&[ -n "$account" ];do
+_account_exists "$account"&&{ [ "$COUNT" = 0 ]&&"${QUIET:-_print_center}" "normal" " All available accounts. " "="||:;}&&printf "%b" "$((COUNT+=1)). $account \n"&&_set_value direct "ACC_${COUNT}_ACC" "$account"
+done 4<<EOF
+$(grep -oE '^ACCOUNT_.*_CLIENT_ID' -- "$CONFIG"|sed -e "s/ACCOUNT_//g" -e "s/_CLIENT_ID//g")
+EOF
+{ [ "$COUNT" -le 0 ]&&"${QUIET:-_print_center}" "normal" " No accounts configured yet. " "=" 1>&2;}||printf '\n'
+return 0
+}
+_set_new_account_name(){
+export QUIET NEW_ACCOUNT_NAME
+_reload_config||return 1
+new_account_name_set_new_account_name="${1:-}"&&unset name_valid_set_new_account_name
+[ -z "$new_account_name_set_new_account_name" ]&&{
+_all_accounts 2>|/dev/null
+"${QUIET:-_print_center}" "normal" " New account name: " "="
+"${QUIET:-_print_center}" "normal" "Info: Account names can only contain alphabets / numbers / dashes." " "&&printf '\n'
+}
+until [ -n "$name_valid_set_new_account_name" ];do
+if [ -n "$new_account_name_set_new_account_name" ];then
+if _account_name_valid "$new_account_name_set_new_account_name";then
+if _account_exists "$new_account_name_set_new_account_name";then
+"${QUIET:-_print_center}" "normal" " Warning: Given account ( $new_account_name_set_new_account_name ) already exists, input different name. " "-" 1>&2
+unset new_account_name_set_new_account_name&&continue
+else
+export new_account_name_set_new_account_name="$new_account_name_set_new_account_name" NEW_ACCOUNT_NAME="$new_account_name_set_new_account_name"&&name_valid_set_new_account_name="true"&&continue
+fi
+else
+"${QUIET:-_print_center}" "normal" " Warning: Given account name ( $new_account_name_set_new_account_name ) invalid, input different name. " "-"
+unset new_account_name_set_new_account_name&&continue
+fi
+else
+[ -t 1 ]||{ "${QUIET:-_print_center}" "normal" " Error: Not running in an interactive terminal, cannot ask for new account name. " 1>&2&&return 1;}
+printf -- "-> \033[?7l"
+read -r new_account_name_set_new_account_name
+printf '\033[?7h'
+fi
+_clear_line 1
+done
+"${QUIET:-_print_center}" "normal" " Given account name: $NEW_ACCOUNT_NAME " "="
+export ACCOUNT_NAME="$NEW_ACCOUNT_NAME"
+return 0
+}
+_delete_account(){
+export CONFIG QUIET
+{ _reload_config&&_handle_old_config;}||return 1
+account_delete_account="${1:?Error: give account name}"&&unset regex_delete_account config_without_values_delete_account
+if _account_exists "$account_delete_account";then
+regex_delete_account="^ACCOUNT_${account_delete_account}_(CLIENT_ID=|CLIENT_SECRET=|REFRESH_TOKEN=|ROOT_FOLDER=|ROOT_FOLDER_NAME=|ACCESS_TOKEN=|ACCESS_TOKEN_EXPIRY=)|DEFAULT_ACCOUNT=\"$account_delete_account\""
+config_without_values_delete_account="$(grep -vE "$regex_delete_account" -- "$CONFIG")"
+chmod u+w -- "$CONFIG"||return 1
+printf "%s\n" "$config_without_values_delete_account" >|"$CONFIG"||return 1
+chmod "a-w-r-x,u+r" -- "$CONFIG"||return 1
+"${QUIET:-_print_center}" "normal" " Successfully deleted account ( $account_delete_account ) from config. " "-"
+else
+"${QUIET:-_print_center}" "normal" " Error: Cannot delete account ( $account_delete_account ) from config. No such account exists " "-" 1>&2
+fi
+return 0
+}
+_handle_old_config(){
+export CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ROOT_FOLDER ROOT_FOLDER_NAME
+[ -n "${CLIENT_ID:+${CLIENT_SECRET:+$REFRESH_TOKEN}}" ]&&{
+account_name_handle_old_config="default" regex_check_handle_old_config config_without_values_handle_old_config count_handle_old_config
+until ! _account_exists "$account_name_handle_old_config";do
+account_name_handle_old_config="$account_name_handle_old_config$((count_handle_old_config+=1))"
+done
+regex_check_handle_old_config="^(CLIENT_ID=|CLIENT_SECRET=|REFRESH_TOKEN=|ROOT_FOLDER=|ROOT_FOLDER_NAME=|ACCESS_TOKEN=|ACCESS_TOKEN_EXPIRY=)"
+config_without_values_handle_old_config="$(grep -vE "$regex_check_handle_old_config" -- "$CONFIG")"
+chmod u+w -- "$CONFIG"||return 1
+printf "%s\n%s\n%s\n%s\n%s\n%s\n" \
+"ACCOUNT_${account_name_handle_old_config}_CLIENT_ID=\"$CLIENT_ID\"" \
+"ACCOUNT_${account_name_handle_old_config}_CLIENT_SECRET=\"$CLIENT_SECRET\"" \
+"ACCOUNT_${account_name_handle_old_config}_REFRESH_TOKEN=\"$REFRESH_TOKEN\"" \
+"ACCOUNT_${account_name_handle_old_config}_ROOT_FOLDER=\"$ROOT_FOLDER\"" \
+"ACCOUNT_${account_name_handle_old_config}_ROOT_FOLDER_NAME=\"$ROOT_FOLDER_NAME\"" \
+"$config_without_values_handle_old_config" >|"$CONFIG"||return 1
+chmod "a-w-r-x,u+r" -- "$CONFIG"||return 1
+_reload_config||return 1
+}
+return 0
+}
+_check_credentials(){
+export CONFIG CONFIG_INFO DEFAULT_ACCOUNT NEW_ACCOUNT_NAME CUSTOM_ACCOUNT_NAME QUIET COUNT
+{ _reload_config&&_handle_old_config;}||return 1
+ACCOUNT_NAME="$DEFAULT_ACCOUNT"
+if [ -n "$NEW_ACCOUNT_NAME" ];then
+_set_new_account_name "$NEW_ACCOUNT_NAME"||return 1
+_check_account_credentials "$ACCOUNT_NAME"||return 1
+else
+if [ -n "$CUSTOM_ACCOUNT_NAME" ];then
+if _account_exists "$CUSTOM_ACCOUNT_NAME";then
+ACCOUNT_NAME="$CUSTOM_ACCOUNT_NAME"
+else
+"${QUIET:-_print_center}" "normal" " Error: No such account ( $CUSTOM_ACCOUNT_NAME ) exists. " "-"&&return 1
+fi
+elif [ -n "$DEFAULT_ACCOUNT" ];then
+_account_exists "$DEFAULT_ACCOUNT"||{
+_update_config DEFAULT_ACCOUNT "" "$CONFIG"&&unset DEFAULT_ACCOUNT ACCOUNT_NAME&&UPDATE_DEFAULT_ACCOUNT="_update_config"
+}
+else
+UPDATE_DEFAULT_ACCOUNT="_update_config"
+fi
+if [ -z "$ACCOUNT_NAME" ];then
+if _all_accounts 2>|/dev/null&&[ "$COUNT" -gt 0 ];then
+if [ "$COUNT" -eq 1 ];then
+_set_value indirect ACCOUNT_NAME "ACC_1_ACC"
+else
+"${QUIET:-_print_center}" "normal" " Above accounts are configured, but default one not set. " "="
+if [ -t 1 ];then
+"${QUIET:-_print_center}" "normal" " Choose default account: " "-"
+until [ -n "$ACCOUNT_NAME" ];do
+printf -- "-> \033[?7l"
+read -r account_name_check_credentials
+printf '\033[?7h'
+if [ "$account_name_check_credentials" -gt 0 ]&&[ "$account_name_check_credentials" -le "$COUNT" ];then
+_set_value indirect ACCOUNT_NAME "ACC_${COUNT}_ACC"
+else
+_clear_line 1
+fi
+done
+else
+printf "%s\n" "Warning: Script is not running in a terminal, choosing first account as default."
+_set_value indirect ACCOUNT_NAME "ACC_1_ACC"
+fi
+fi
+else
+_set_new_account_name ""||return 1
+_check_account_credentials "$ACCOUNT_NAME"||return 1
+fi
+fi
+_check_account_credentials "$ACCOUNT_NAME"||return 1
+fi
+"${UPDATE_DEFAULT_ACCOUNT:-:}" DEFAULT_ACCOUNT "$ACCOUNT_NAME" "$CONFIG"
+"${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "$CONFIG" "$CONFIG_INFO"
+[ -n "$CONTINUE_WITH_NO_INPUT" ]||_token_bg_service
+return 0
+}
+_check_account_credentials(){
+account_name_check_account_credentials="${1:?Give account name}"
+{
+_check_client ID "$account_name_check_account_credentials"&&_check_client SECRET "$account_name_check_account_credentials"&&_check_refresh_token "$account_name_check_account_credentials"&&_check_access_token "$account_name_check_account_credentials" check
+}||return 1
+return 0
+}
+_check_client(){
+export CONFIG QUIET
+type_check_client="CLIENT_${1:?Error: ID or SECRET}" account_name_check_client="${2:-}"
+unset type_value_check_client type_name_check_client valid_check_client client_check_client message_check_client regex_check_client
+if [ "$type_check_client" = "CLIENT_ID" ];then
+regex_check_client='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
+else
+regex_check_client='[0-9A-Za-z_-]+'
+fi
+type_name_check_client="${account_name_check_client:+ACCOUNT_${account_name_check_client}_}$type_check_client"
+_set_value indirect type_value_check_client "$type_name_check_client"
+until [ -n "$type_value_check_client" ]&&[ -n "$valid_check_client" ];do
+[ -n "$type_value_check_client" ]&&{
+if _assert_regex "$regex_check_client" "$type_value_check_client";then
+[ -n "$client_check_client" ]&&{ _update_config "$type_name_check_client" "$type_value_check_client" "$CONFIG"||return 1;}
+valid_check_client="true"&&continue
+else
+{ [ -n "$client_check_client" ]&&message_check_client="- Try again";}||message_check_client="in config ( $CONFIG )"
+"${QUIET:-_print_center}" "normal" " Invalid Client $1 $message_check_client " "-"&&unset "$type_name_check_client" client
+fi
+}
+[ -z "$client_check_client" ]&&printf "\n"&&"${QUIET:-_print_center}" "normal" " Enter Client $1 " "-"
+[ -n "$client_check_client" ]&&_clear_line 1
+printf -- "-> "
+read -r "${type_name_check_client?}"&&client_check_client=1
+_set_value indirect type_value_check_client "$type_name_check_client"
+done
+_set_value direct "$type_name_check_client" "$type_value_check_client"
+_set_value direct "$type_check_client" "$type_value_check_client"
+return 0
+}
+_check_refresh_token(){
+export CLIENT_ID CLIENT_SECRET QUIET CONFIG CURL_PROGRESS SCOPE REDIRECT_URI TOKEN_URL
+[ -z "${CLIENT_ID:+$CLIENT_SECRET}" ]&&return 1
+account_name_check_refresh_token="${1:-}"
+refresh_token_regex='[0-9]//[0-9A-Za-z_-]+' authorization_code_regex='[0-9]/[0-9A-Za-z_-]+'
+_set_value direct refresh_token_name_check_refresh_token "${account_name_check_refresh_token:+ACCOUNT_${account_name_check_refresh_token}_}REFRESH_TOKEN"
+_set_value indirect refresh_token_value_check_refresh_token "${refresh_token_name_check_refresh_token:-}"
+[ "${REFETCH_REFRESH_TOKEN:-false}" = "true" ]&&{
+unset refresh_token_value_check_refresh_token
+}
+[ -n "$refresh_token_value_check_refresh_token" ]&&{
+! _assert_regex "$refresh_token_regex" "$refresh_token_value_check_refresh_token"&&"${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-"&&unset refresh_token_value_check_refresh_token
+}
+[ -z "$refresh_token_value_check_refresh_token" ]&&{
+printf "\n"&&"${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
+printf "\n"&&"${QUIET:-_print_center}" "normal" " Refresh Token " "-"&&printf -- "-> "
+read -r refresh_token_value_check_refresh_token
+if [ -n "$refresh_token_value_check_refresh_token" ];then
+"${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
+if _assert_regex "$refresh_token_regex" "$refresh_token_value_check_refresh_token";then
+_set_value direct REFRESH_TOKEN "$refresh_token_value_check_refresh_token"
+{ _check_access_token "$account_name_check_refresh_token" skip_check&&_update_config "$refresh_token_name_check_refresh_token" "$refresh_token_value_check_refresh_token" "$CONFIG"&&_clear_line 1;}||check_error_check_refresh_token=true
+else
+check_error_check_refresh_token=true
+fi
+[ -n "$check_error_check_refresh_token" ]&&"${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-"&&unset refresh_token_value_check_refresh_token
+else
+"${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"&&unset refresh_token_value_check_refresh_token
+fi
+[ -z "$refresh_token_value_check_refresh_token" ]&&{
+printf "\n"&&"${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
+URL="https://accounts.google.com/o/oauth2/auth?client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=$SCOPE&response_type=code&prompt=consent"
+printf "\n%s\n" "$URL"
+unset AUTHORIZATION_CODE authorization_code AUTHORIZATION_CODE_VALID response
+until [ -n "$AUTHORIZATION_CODE" ]&&[ -n "$AUTHORIZATION_CODE_VALID" ];do
+[ -n "$AUTHORIZATION_CODE" ]&&{
+if _assert_regex "$authorization_code_regex" "$AUTHORIZATION_CODE";then
+AUTHORIZATION_CODE_VALID="true"&&continue
+else
+"${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-"&&unset AUTHORIZATION_CODE authorization_code
+fi
+}
+{ [ -z "$authorization_code" ]&&printf "\n"&&"${QUIET:-_print_center}" "normal" " Enter the authorization code " "-";}||_clear_line 1
+printf -- "-> \033[?7l"
+read -r AUTHORIZATION_CODE&&authorization_code=1
+printf '\033[?7h'
+done
+response_check_refresh_token="$(curl --compressed "$CURL_PROGRESS" -X POST \
+--data "code=$AUTHORIZATION_CODE&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&redirect_uri=$REDIRECT_URI&grant_type=authorization_code" "$TOKEN_URL")"||:
+_clear_line 1 1>&2
+refresh_token_value_check_refresh_token="$(printf "%s\n" "$response_check_refresh_token"|_json_value refresh_token 1 1)"||{ printf "%s\n" "Error: Cannot fetch refresh token, make sure the authorization code was correct."&&return 1;}
+_set_value direct REFRESH_TOKEN "$refresh_token_value_check_refresh_token"
+{ _check_access_token "$account_name_check_refresh_token" skip_check "$response_check_refresh_token"&&_update_config "$refresh_token_name_check_refresh_token" "$refresh_token_value_check_refresh_token" "$CONFIG";}||return 1
+}
+printf "\n"
+}
+_set_value direct "$refresh_token_name_check_refresh_token" "$refresh_token_value_check_refresh_token"
+_set_value direct REFRESH_TOKEN "$refresh_token_value_check_refresh_token"
+return 0
+}
+_check_access_token(){
+export CLIENT_ID CLIENT_SECRET REFRESH_TOKEN CONFIG QUIET
+[ -z "${CLIENT_ID:+${CLIENT_SECRET:+$REFRESH_TOKEN}}" ]&&return 1
+account_name_check_access_token="${1:-}" no_check_check_access_token="${2:-false}" response_json_check_access_token="${3:-}"
+unset token_name_check_access_token token_expiry_name_check_access_token token_value_check_access_token token_expiry_value_check_access_token response_check_access_token
+access_token_regex='ya29\.[0-9A-Za-z_-]+'
+token_name_check_access_token="${account_name_check_access_token:+ACCOUNT_${account_name_check_access_token}_}ACCESS_TOKEN"
+token_expiry_name_check_access_token="${token_name_check_access_token}_EXPIRY"
+_set_value indirect token_value_check_access_token "$token_name_check_access_token"
+_set_value indirect token_expiry_value_check_access_token "$token_expiry_name_check_access_token"
+[ "$no_check_check_access_token" = skip_check ]||[ -z "$token_value_check_access_token" ]||[ "${token_expiry_value_check_access_token:-0}" -lt "$(_epoch)" ]||! _assert_regex "$access_token_regex" "$token_value_check_access_token"&&{
+response_check_access_token="${response_json_check_access_token:-$(curl --compressed -s -X POST --data \
+"client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&refresh_token=$REFRESH_TOKEN&grant_type=refresh_token" "$TOKEN_URL")}"||:
+if token_value_check_access_token="$(printf "%s\n" "$response_check_access_token"|_json_value access_token 1 1)";then
+token_expiry_value_check_access_token="$(($(_epoch)+$(printf "%s\n" "$response_check_access_token"|_json_value expires_in 1 1)-1))"
+_update_config "$token_name_check_access_token" "$token_value_check_access_token" "$CONFIG"||return 1
+_update_config "$token_expiry_name_check_access_token" "$token_expiry_value_check_access_token" "$CONFIG"||return 1
+else
+"${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
+printf "%s\n" "$response_check_access_token" 1>&2
+printf "%s\n" "If refresh token has expired, then use --oauth-refetch-refresh-token to refetch refresh token, if the error is not clear make a issue on github repository."
+return 1
+fi
+}
+_set_value direct ACCESS_TOKEN "$token_value_check_access_token"
+_set_value direct ACCESS_TOKEN_EXPIRY "$token_expiry_value_check_access_token"
+_set_value direct INITIAL_ACCESS_TOKEN "$ACCESS_TOKEN"
+return 0
+}
+_reload_config(){
+export CONFIG
+{ [ -r "$CONFIG" ]&&_parse_config "$CONFIG";}||{ printf "" >>"$CONFIG"||return 1;}
+return 0
+}
+_token_bg_service(){
+export MAIN_PID ACCESS_TOKEN ACCESS_TOKEN_EXPIRY TMPFILE
+[ -z "$MAIN_PID" ]&&return 0
+printf "%b\n" "ACCESS_TOKEN=\"$ACCESS_TOKEN\"\nACCESS_TOKEN_EXPIRY=\"$ACCESS_TOKEN_EXPIRY\"" >|"${TMPFILE}_ACCESS_TOKEN"
+{
+until ! kill -0 "$MAIN_PID" 2>|/dev/null 1>&2;do
+. "${TMPFILE}_ACCESS_TOKEN"
+CURRENT_TIME="$(_epoch)"
+REMAINING_TOKEN_TIME="$((ACCESS_TOKEN_EXPIRY-CURRENT_TIME))"
+if [ "$REMAINING_TOKEN_TIME" -le 300 ];then
+CONFIG="${TMPFILE}_ACCESS_TOKEN" _timeout 30 _check_access_token "" skip_check||:
+else
+TOKEN_PROCESS_TIME_TO_SLEEP="$(if [ "$REMAINING_TOKEN_TIME" -le 301 ];then
+printf "0\n"
+else
+printf "%s\n" "$((REMAINING_TOKEN_TIME-300))"
+fi)"
+sleep "$TOKEN_PROCESS_TIME_TO_SLEEP"
+fi
+sleep 1
+done
+}&
+export ACCESS_TOKEN_SERVICE_PID="$!"
+return 0
+}
+_bytes_to_human(){
+b_bytes_to_human="$(printf "%.0f\n" "${1:-0}")" s_bytes_to_human=0
+d_bytes_to_human='' type_bytes_to_human=''
+while [ "$b_bytes_to_human" -gt 1024 ];do
+d_bytes_to_human="$(printf ".%02d" $((b_bytes_to_human%1024*100/1024)))"
+b_bytes_to_human=$((b_bytes_to_human/1024))&&s_bytes_to_human=$((s_bytes_to_human+=1))
+done
+j=0&&for i in B KB MB GB TB PB EB YB ZB;do
+j="$((j+=1))"&&[ "$((j-1))" = "$s_bytes_to_human" ]&&type_bytes_to_human="$i"&&break
+continue
+done
+printf "%s\n" "$b_bytes_to_human$d_bytes_to_human $type_bytes_to_human"
+}
+_check_debug(){
+export DEBUG QUIET
+if [ -n "$DEBUG" ];then
+set -x&&PS4='-> '
+_print_center(){ { [ $# = 3 ]&&printf "%s\n" "$2";}||{ printf "%s%s\n" "$2" "$3";};}
+_clear_line(){ :;}&&_move_cursor(){ :;}&&_newline(){ :;}
+else
+if [ -z "$QUIET" ];then
+if _support_ansi_escapes;then
+if ! _required_column_size;then
+_print_center(){ { [ $# = 3 ]&&printf "%s\n" "[ $2 ]";}||{ printf "%s\n" "[ $2$3 ]";};}
+fi
+export EXTRA_LOG="_print_center" CURL_PROGRESS="-#" CURL_PROGRESS_EXTRA="-#" SUPPORT_ANSI_ESCAPES="true"
+else
+_print_center(){ { [ $# = 3 ]&&printf "%s\n" "[ $2 ]";}||{ printf "%s\n" "[ $2$3 ]";};}
+_clear_line(){ :;}&&_move_cursor(){ :;}
+fi
+_newline(){ printf "%b" "$1";}
+else
+_print_center(){ :;}&&_clear_line(){ :;}&&_move_cursor(){ :;}&&_newline(){ :;}
+fi
+set +x
+fi
+}
+_check_internet(){
+"${EXTRA_LOG:-}" "justify" "Checking Internet Connection.." "-"
+if ! _timeout 10 curl -Is google.com --compressed;then
+_clear_line 1
+"${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
+return 1
+fi
+_clear_line 1
+}
+_clear_line(){
+printf "\033[%sA\033[2K" "$1"
+}
+_dirname(){
+dir_dirname="${1:-.}"
+dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}"&&[ -n "${dir_dirname##*/*}" ]&&dir_dirname=.
+dir_dirname="${dir_dirname%/*}"&&dir_dirname="${dir_dirname%%"${dir_dirname##*[!/]}"}"
+printf '%s\n' "${dir_dirname:-/}"
+}
+_display_time(){
+t_display_time="$1" day_display_time="$((t_display_time/60/60/24))"
+hr_display_time="$((t_display_time/60/60%24))" min_display_time="$((t_display_time/60%60))" sec_display_time="$((t_display_time%60))"
+[ "$day_display_time" -gt 0 ]&&printf '%d days ' "$day_display_time"
+[ "$hr_display_time" -gt 0 ]&&printf '%d hrs ' "$hr_display_time"
+[ "$min_display_time" -gt 0 ]&&printf '%d minute(s) ' "$min_display_time"
+[ "$day_display_time" -gt 0 ]||[ "$hr_display_time" -gt 0 ]||[ "$min_display_time" -gt 0 ]&&printf 'and '
+printf '%d seconds\n' "$sec_display_time"
+}
+_get_latest_sha(){
+export TYPE TYPE_VALUE REPO
+unset latest_sha_get_latest_sha raw_get_latest_sha
+case "${1:-$TYPE}" in
+branch)\
+latest_sha_get_latest_sha="$(\
+raw_get_latest_sha="$(curl --compressed -s https://github.com/"${3:-$REPO}"/commits/"${2:-$TYPE_VALUE}".atom -r 0-2000)"
+_tmp="$(printf "%s\n" "$raw_get_latest_sha"|grep -o 'Commit\/.*<' -m1||:)"&&_tmp="${_tmp##*\/}"&&printf "%s\n" "${_tmp%%<*}")"
+;;
+release)\
+latest_sha_get_latest_sha="$(\
+raw_get_latest_sha="$(curl -L --compressed -s https://github.com/"${3:-$REPO}"/releases/"${2:-$TYPE_VALUE}")"
+_tmp="$(printf "%s\n" "$raw_get_latest_sha"|grep '="/'"${3:-$REPO}""/commit" -m1||:)"&&_tmp="${_tmp##*commit\/}"&&printf "%s\n" "${_tmp%%\"*}")"
+;;
+*):
+esac
+printf "%b" "${latest_sha_get_latest_sha:+$latest_sha_get_latest_sha\n}"
+}
+_json_escape(){
+mode_json_escape="${1:?Missing mode}" input_json_escape="${2:?Provide Input}" output_json_escape=""
+if [ "$mode_json_escape" = "j" ];then
+output_json_escape="$(printf "%s" "$input_json_escape"|sed \
+-e "s|\\\|\\\\\\\|g" \
+-e "s|\/|\\\/|g" \
+-e 's/\"/\\\"/g' \
+-e "s/$(printf '\t')/\\t/g" \
+-e "s/$(printf '\r')/\\r/g" \
+-e "s/$(printf '\f')/\\f/g")"
+else
+output_json_escape="$(printf "%s" "$input_json_escape"|sed \
+-e "s/$(printf '\t')/\\t/g" \
+-e "s/$(printf '\r')/\\r/g" \
+-e "s/$(printf '\f')/\\f/g")"
+fi
+output_json_escape="$(printf "%s" "$output_json_escape"|awk '{printf "%s%s",sep,$0; sep="\\n"} END{print ""}')"
+printf "%s" "$output_json_escape"
+}
+_json_value(){
+{ [ "$2" -gt 0 ] 2>|/dev/null&&no_of_lines_json_value="$2";}||:
+{ [ "$3" -gt 0 ] 2>|/dev/null&&num_json_value="$3";}||{ ! [ "$3" = all ]&&num_json_value=1;}
+_tmp="$(grep -o "\"$1\"\:.*" ${no_of_lines_json_value:+-m} $no_of_lines_json_value)"||return 1
+printf "%s\n" "$_tmp"|sed -e 's|.*"'"$1""\":||" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "$num_json_value"p||:
+return 0
+}
+_parse_config(){
+_config_file_parse_config="${1:?Error: Profile config file}"
+print_parse_config="${2:-false}"
+[ -r "$_config_file_parse_config" ]||{
+printf "%s\n" "Error: Given config file ( $_config_file_parse_config ) is not readable."
+return 1
+}
+while IFS='=' read -r key val;do
+{ [ -n "$key" ]&&[ -n "$val" ]&&[ -n "${key##\#*}" ];}||continue
+key="${key#"${key%%[![:space:]]*}"}"
+val="${val#"${val%%[![:space:]]*}"}"
+key="${key%"${key##*[![:space:]]}"}"
+val="${val%"${val##*[![:space:]]}"}"
+case "$val" in
+\"*\")val="${val#\"}" val="${val%\"}";;
+\'*\')val="${val#\'}" val="${val%\'}";;
+*):
+esac
+export "$key=$val" 2>/dev/null||printf "%s\n" "Warning: $key is not a valid variable name."
+[ "$print_parse_config" = true ]&&echo "$key=$val"
+done <"$_config_file_parse_config"
+return 0
+}
+_print_center(){
+[ $# -lt 3 ]&&printf "Missing arguments\n"&&return 1
+term_cols_print_center="${COLUMNS:-}"
+type_print_center="$1" filler_print_center=""
+case "$type_print_center" in
+normal)out_print_center="$2"&&symbol_print_center="$3";;
+justify)if
+[ $# = 3 ]
+then
+input1_print_center="$2" symbol_print_center="$3" to_print_print_center="" out_print_center=""
+to_print_print_center="$((term_cols_print_center-5))"
+{ [ "${#input1_print_center}" -gt "$to_print_print_center" ]&&out_print_center="[ $(printf "%.${to_print_print_center}s\n" "$input1_print_center")..]";}||{ out_print_center="[ $input1_print_center ]";}
+else
+input1_print_center="$2" input2_print_center="$3" symbol_print_center="$4" to_print_print_center="" temp_print_center="" out_print_center=""
+to_print_print_center="$((term_cols_print_center*47/100))"
+{ [ "${#input1_print_center}" -gt "$to_print_print_center" ]&&temp_print_center=" $(printf "%.${to_print_print_center}s\n" "$input1_print_center")..";}||{ temp_print_center=" $input1_print_center";}
+to_print_print_center="$((term_cols_print_center*46/100))"
+{ [ "${#input2_print_center}" -gt "$to_print_print_center" ]&&temp_print_center="$temp_print_center$(printf "%.${to_print_print_center}s\n" "$input2_print_center").. ";}||{ temp_print_center="$temp_print_center$input2_print_center ";}
+out_print_center="[$temp_print_center]"
+fi
+;;
+*)return 1
+esac
+str_len_print_center="${#out_print_center}"
+[ "$str_len_print_center" -ge "$((term_cols_print_center-1))" ]&&{
+printf "%s\n" "$out_print_center"&&return 0
+}
+filler_print_center_len="$(((term_cols_print_center-str_len_print_center)/2))"
+i_print_center=1&&while [ "$i_print_center" -le "$filler_print_center_len" ];do
+filler_print_center="$filler_print_center$symbol_print_center"&&i_print_center="$((i_print_center+1))"
+done
+printf "%s%s%s" "$filler_print_center" "$out_print_center" "$filler_print_center"
+[ "$(((term_cols_print_center-str_len_print_center)%2))" -ne 0 ]&&printf "%s" "$symbol_print_center"
+printf "\n"
+return 0
+}
+_print_center_quiet(){
+{ [ $# = 3 ]&&printf "%s\n" "$2";}||{ printf "%s%s\n" "$2" "$3";}
+}
+_support_ansi_escapes(){
+unset ansi_escapes
+case "${TERM:-}" in
+xterm*|rxvt*|urxvt*|linux*|vt*|screen*)ansi_escapes="true";;
+*):
+esac
+{ [ -t 2 ]&&[ -n "$ansi_escapes" ]&&return 0;}||return 1
+}
+_timeout(){
+timeout_timeout="${1:?Error: Specify Timeout}"&&shift
+{
+"$@"&
+child="$!"
+trap -- "" TERM
+{
+sleep "$timeout_timeout"
+kill -9 "$child"
+}&
+wait "$child"
+} 2>|/dev/null 1>&2
+}
+_update_config(){
+[ $# -lt 3 ]&&printf "Missing arguments\n"&&return 1
+value_name_update_config="$1" value_update_config="$2" config_path_update_config="$3"
+! [ -f "$config_path_update_config" ]&&: >|"$config_path_update_config"
+chmod u+w -- "$config_path_update_config"||return 1
+printf "%s\n%s\n" "$(grep -v -e "^$" -e "^$value_name_update_config=" -- "$config_path_update_config"||:)" \
+"$value_name_update_config=\"$value_update_config\"" >|"$config_path_update_config"||return 1
+chmod a-w-r-x,u+r -- "$config_path_update_config"||return 1
+return 0
+}
+_check_existing_file()(export \
+EXTRA_LOG \
+CURL_PROGRESS_EXTRA \
+API_URL \
+API_VERSION
+[ $# -lt 2 ]&&printf "Missing arguments\n"&&return 1
+name_check_existing_file="$1" rootdir_check_existing_file="$2" mode_check_existing_file="$3" param_value_check_existing_file="$4"
+unset query_check_existing_file response_check_existing_file id_check_existing_file
+"$EXTRA_LOG" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
+query_check_existing_file="$(_url_encode "name=\"$name_check_existing_file\" and '$rootdir_check_existing_file' in parents and trashed=false and 'me' in writers")"
+response_check_existing_file="$(_api_request "$CURL_PROGRESS_EXTRA" \
+"$API_URL/drive/$API_VERSION/files?q=$query_check_existing_file&fields=files(id,name,mimeType${mode_check_existing_file:+,$mode_check_existing_file})&supportsAllDrives=true&includeItemsFromAllDrives=true"||:)"&&_clear_line 1 1>&2
+_clear_line 1 1>&2
+printf "%s\n" "$response_check_existing_file"|_json_value id 1 1 2>|/dev/null 1>&2||return 1
+[ -n "$mode_check_existing_file" ]&&{
+[ "$(printf "%s\n" "$response_check_existing_file"|_json_value "$mode_check_existing_file" 1 1)" = "$param_value_check_existing_file" ]||return 1
+}
+printf "%s\n" "$response_check_existing_file"
+return 0)
+_clone_file(){
+export DESCRIPTION_FILE CHECK_MODE SKIP_DUPLICATES QUIET API_URL API_VERSION CURL_PROGRESS
+[ $# -lt 5 ]&&printf "Missing arguments\n"&&return 1
+job_clone_file="$1" file_id_clone_file="$2" file_root_id_clone_file="$3" name_clone_file="$4" size_clone_file="$5" md5_clone_file="$6"
+unset post_data_clone_file response_clone_file readable_size_clone_file description_clone_file&&STRING="Cloned"
+readable_size_clone_file="$(_bytes_to_human "$size_clone_file")"
+escaped_name_clone_file="$(_json_escape j "$name_clone_file")" print_name_clone_file="$(_json_escape p "$name_clone_file")"
+[ -n "$DESCRIPTION_FILE" ]&&{
+description_clone_file="$(printf "%s\n" "$DESCRIPTION_FILE"|sed -e "s|%f|$name_clone_file|g|" -e "s|%f|$readable_size_clone_file|g|")"
+description_clone_file="$(_json_escape j "$description_clone_file")"
+}
+post_data_clone_file="{\"parents\": [\"$file_root_id_clone_file\"]${description_clone_file:+,\"description\":\"$description_clone_file\"}}"
+_print_center "justify" "$print_name_clone_file " "| $readable_size_clone_file" "="
+if [ "$job_clone_file" = update ];then
+unset file_check_json_clone_file check_value_type_clone_file check_value_clone_file
+case "$CHECK_MODE" in
+2)check_value_type_clone_file="size" check_value_clone_file="$size_clone_file";;
+3)check_value_type_clone_file="md5Checksum" check_value_clone_file="$md5_clone_file";;
+*):
+esac
+if file_check_json_clone_file="$(_check_existing_file "$escaped_name_clone_file" "$file_root_id_clone_file" "$check_value_type_clone_file" "$check_value_clone_file")";then
+if [ -n "$SKIP_DUPLICATES" ];then
+_collect_file_info "$file_check_json_clone_file" "$print_name_clone_file"||return 1
+_clear_line 1
+"${QUIET:-_print_center}" "justify" "$print_name_clone_file" " already exists." "="&&return 0
+else
+_print_center "justify" "Overwriting file.." "-"
+{ _file_id_clone_file="$(printf "%s\n" "$file_check_json_clone_file"|_json_value id 1 1)"&&post_data_clone_file="$(_drive_info "$_file_id_clone_file" "parents,writersCanShare")";}||{ _error_logging_upload "$print_name_clone_file" "${post_data_clone_file:-$file_check_json_clone_file}"||return 1;}
+if [ "$_file_id_clone_file" != "$file_id_clone_file" ];then
+_api_request -s \
+-X DELETE \
+"$API_URL/drive/$API_VERSION/files/$_file_id_clone_file?supportsAllDrives=true&includeItemsFromAllDrives=true" 2>|/dev/null 1>&2||:
+STRING="Updated"
+else
+_collect_file_info "$file_check_json_clone_file" "$print_name_clone_file"||return 1
+fi
+fi
+else
+_print_center "justify" "Cloning file.." "-"
+fi
+else
+_print_center "justify" "Cloning file.." "-"
+fi
+response_clone_file="$(_api_request $CURL_PROGRESS \
+-X POST \
+-H "Content-Type: application/json; charset=UTF-8" \
+-d "$post_data_clone_file" \
+"$API_URL/drive/$API_VERSION/files/$file_id_clone_file/copy?supportsAllDrives=true&includeItemsFromAllDrives=true"||:)"
+for _ in 1 2 3;do _clear_line 1;done
+_collect_file_info "$response_clone_file" "$print_name_clone_file"||return 1
+"${QUIET:-_print_center}" "justify" "$print_name_clone_file " "| $readable_size_clone_file | $STRING" "="
+return 0
+}
+_create_directory(){
+export EXTRA_LOG CURL_PROGRESS_EXTRA API_VERSION API_URL
+[ $# -lt 2 ]&&printf "Missing arguments\n"&&return 1
+dirname_create_directory="${1##*/}" rootdir_create_directory="$2"
+unset query_create_directory search_response_create_directory folder_id_create_directory
+escaped_dirname_create_directory="$(_json_escape j "$dirname_create_directory")"
+print_dirname_create_directory="$(_json_escape p "$dirname_create_directory")"
+"$EXTRA_LOG" "justify" "Creating GDRIVE DIR:" " $print_dirname_create_directory" "-" 1>&2
+query_create_directory="$(_url_encode "mimeType='application/vnd.google-apps.folder' and name=\"$escaped_dirname_create_directory\" and trashed=false and '$rootdir_create_directory' in parents")"
+search_response_create_directory="$(_api_request "$CURL_PROGRESS_EXTRA" \
+"$API_URL/drive/$API_VERSION/files?q=$query_create_directory&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true"||:)"&&_clear_line 1 1>&2
+if ! folder_id_create_directory="$(printf "%s\n" "$search_response_create_directory"|_json_value id 1 1)";then
+unset create_folder_post_data_create_directory create_folder_response_create_directory
+create_folder_post_data_create_directory="{\"mimeType\": \"application/vnd.google-apps.folder\",\"name\": \"$escaped_dirname_create_directory\",\"parents\": [\"$rootdir_create_directory\"]}"
+create_folder_response_create_directory="$(_api_request "$CURL_PROGRESS_EXTRA" \
+-X POST \
+-H "Content-Type: application/json; charset=UTF-8" \
+-d "$create_folder_post_data_create_directory" \
+"$API_URL/drive/$API_VERSION/files?fields=id&supportsAllDrives=true&includeItemsFromAllDrives=true"||:)"&&_clear_line 1 1>&2
+fi
+_clear_line 1 1>&2
+{ folder_id_create_directory="${folder_id_create_directory:-$(printf "%s\n" "$create_folder_response_create_directory"|_json_value id 1 1)}"&&printf "%s\n" "$folder_id_create_directory";}||{ printf "%s\n" "$create_folder_response_create_directory" 1>&2&&return 1;}
+return 0
+}
+_drive_info(){
+export EXTRA_LOG CURL_PROGRESS_EXTRA API_URL API_VERSION
+[ $# -lt 2 ]&&printf "Missing arguments\n"&&return 1
+folder_id_drive_info="$1" fetch_drive_info="$2"
+unset search_response_drive_info
+"$EXTRA_LOG" "justify" "Fetching info.." "-" 1>&2
+search_response_drive_info="$(_api_request "$CURL_PROGRESS_EXTRA" \
+"$API_URL/drive/$API_VERSION/files/$folder_id_drive_info?fields=$fetch_drive_info&supportsAllDrives=true&includeItemsFromAllDrives=true"||:)"&&_clear_line 1 1>&2
+_clear_line 1 1>&2
+printf "%b" "${search_response_drive_info:+$search_response_drive_info\n}"
+return 0
+}
+_extract_id(){
+[ $# = 0 ]&&printf "Missing arguments\n"&&return 1
+LC_ALL=C id_extract_id="$1"
+case "$id_extract_id" in
+*'drive.google.com'*'id='*)_tmp="${id_extract_id##*id=}"&&_tmp="${_tmp%%\?*}"&&id_extract_id="${_tmp%%\&*}";;
+*'drive.google.com'*'file/d/'*|'http'*'docs.google.com'*'/d/'*)_tmp="${id_extract_id##*\/d\/}"&&_tmp="${_tmp%%\/*}"&&_tmp="${_tmp%%\?*}"&&id_extract_id="${_tmp%%\&*}";;
+*'drive.google.com'*'drive'*'folders'*)_tmp="${id_extract_id##*\/folders\/}"&&_tmp="${_tmp%%\?*}"&&id_extract_id="${_tmp%%\&*}";;
+*):
+esac
+printf "%b" "${id_extract_id:+$id_extract_id\n}"
+}
+_upload_file(){
+export QUIET DESCRIPTION_FILE CHECK_MODE SKIP_DUPLICATES API_URL API_VERSION INFO_PATH
+[ $# -lt 3 ]&&printf "Missing arguments\n"&&return 1
+job_upload_file="$1" input_upload_file="$2" folder_id_upload_file="$3"
+unset slug_upload_file inputname_upload_file extension_upload_file inputsize_upload_file readable_size_upload_file request_method_upload_file \
+url_upload_file postdata_upload_file uploadlink_upload_file upload_body_upload_file mime_type_upload_file description_upload_file \
+resume_args1_upload_file resume_args2_upload_file resume_args3_upload_file
+slug_upload_file="${input_upload_file##*/}"
+escaped_slug_upload_file="$(_json_escape j "$slug_upload_file")" print_slug_upload_file="$(_json_escape p "$slug_upload_file")"
+inputname_upload_file="${slug_upload_file%.*}"
+extension_upload_file="${slug_upload_file##*.}"
+inputsize_upload_file="$(($(wc -c <"$input_upload_file")))"&&content_length_upload_file="$inputsize_upload_file"
+readable_size_upload_file="$(_bytes_to_human "$inputsize_upload_file")"
+[ "$inputname_upload_file" = "$extension_upload_file" ]&&{
+mime_type_upload_file="$(file --brief --mime-type "$input_upload_file"||mimetype --output-format %m "$input_upload_file")" 2>|/dev/null||{
+"${QUIET:-_print_center}" "justify" "Error: file or mimetype command not found." "="&&printf "\n"
+exit 1
+}
+}
+[ -n "$DESCRIPTION_FILE" ]&&{
+description_upload_file="$(printf "%s\n" "$DESCRIPTION_FILE"|sed -e "s|%f|$slug_upload_file|g" -e "s|%f|$readable_size_upload_file|g" -e "s|%m|$mime_type_upload_file|g")"
+description_upload_file="$(_json_escape j "$description_upload_file")"
+}
+_print_center "justify" "$print_slug_upload_file" " | $readable_size_upload_file" "="
+[ "$job_upload_file" = update ]&&{
+unset file_check_json_upload_file check_value_upload_file
+case "$CHECK_MODE" in
+2)check_value_type_upload_file="size" check_value_upload_file="$inputsize_upload_file";;
+3)\
+check_value_type_upload_file="md5Checksum"
+check_value_upload_file="$(md5sum "$input_upload_file")"||{
+"${QUIET:-_print_center}" "justify" "Error: cannot calculate md5sum of given file." "=" 1>&2
+return 1
+}
+check_value_upload_file="${check_value_upload_file%% *}"
+;;
+*):
+esac
+if file_check_json_upload_file="$(_check_existing_file "$escaped_slug_upload_file" "$folder_id_upload_file" "$check_value_type_upload_file" "$check_value_upload_file")";then
+if [ -n "$SKIP_DUPLICATES" ];then
+_collect_file_info "$file_check_json_upload_file" "$print_slug_upload_file"||return 1
+STRING="Skipped" _normal_logging_upload
+return 0
+else
+request_method_upload_file="PATCH"
+_file_id_upload_file="$(printf "%s\n" "$file_check_json_upload_file"|_json_value id 1 1)"||{ _error_logging_upload "$print_slug_upload_file" "$file_check_json_upload_file"||return 1;}
+url_upload_file="$API_URL/upload/drive/$API_VERSION/files/$_file_id_upload_file?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
+postdata_upload_file="{\"mimeType\": \"$mime_type_upload_file\",\"name\": \"$escaped_slug_upload_file\",\"addParents\": [\"$folder_id_upload_file\"]${description_upload_file:+,\"description\":\"$description_upload_file\"}}"
+STRING="Updated"
+fi
+else
+job_upload_file="create"
+fi
+}
+[ "$job_upload_file" = create ]&&{
+url_upload_file="$API_URL/upload/drive/$API_VERSION/files?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
+request_method_upload_file="POST"
+postdata_upload_file="{\"mimeType\": \"$mime_type_upload_file\",\"name\": \"$escaped_slug_upload_file\",\"parents\": [\"$folder_id_upload_file\"]${description_upload_file:+,\"description\":\"$description_upload_file\"}}"
+STRING="Uploaded"
+}
+__file_upload_file="$INFO_PATH/${print_slug_upload_file}__::__${folder_id_upload_file}__::__$inputsize_upload_file"
+if [ -r "$__file_upload_file" ];then
+uploadlink_upload_file="$(cat "$__file_upload_file"||:)"
+http_code_upload_file="$(curl --compressed -s -X PUT "$uploadlink_upload_file" -o /dev/null --write-out %"{http_code}")"||:
+case "$http_code_upload_file" in
+308)\
+uploaded_range_upload_file="$(\
+raw_upload_file="$(curl --compressed -s -X PUT \
+-H "Content-Range: bytes */$content_length_upload_file" \
+--url "$uploadlink_upload_file" --globoff -D -||:)"&&printf "%s\n" "${raw_upload_file##*[R,r]ange: bytes=0-}"|while
+read -r line
+do printf "%s\n" "${line%%"$(printf '\r')"}"&&break;done)"
+if [ "$uploaded_range_upload_file" -gt 0 ] 2>|/dev/null;then
+_print_center "justify" "Resuming interrupted upload.." "-"&&_newline "\n"
+content_range_upload_file="$(printf "bytes %s-%s/%s\n" "$((uploaded_range_upload_file+1))" "$((inputsize_upload_file-1))" "$inputsize_upload_file")"
+content_length_upload_file="$((inputsize_upload_file-$((uploaded_range_upload_file+1))))"
+resume_args1_upload_file='-s' resume_args2_upload_file='--http1.1' resume_args3_upload_file="Content-Range: $content_range_upload_file"
+_upload_file_from_uri _clear_line
+_collect_file_info "$upload_body_upload_file" "$print_slug_upload_file"||return 1
+_normal_logging_upload
+_remove_upload_session
+else
+_full_upload||return 1
+fi
+;;
+4[0-9][0-9]|000)_full_upload||return 1
+;;
+201|200)\
+upload_body_upload_file="$http_code_upload_file"
+_collect_file_info "$upload_body_upload_file" "$print_slug_upload_file"||return 1
+_normal_logging_upload
+_remove_upload_session
+;;
+*):
+esac
+else
+_full_upload||return 1
+fi
+return 0
+}
+_generate_upload_link(){
+"${EXTRA_LOG:-}" "justify" "Generating upload link.." "-" 1>&2
+uploadlink_upload_file="$(_api_request "${CURL_PROGRESS_EXTRA:-}" \
+-X "$request_method_upload_file" \
+-H "Content-Type: application/json; charset=UTF-8" \
+-H "X-Upload-Content-Type: $mime_type_upload_file" \
+-H "X-Upload-Content-Length: $inputsize_upload_file" \
+-d "$postdata_upload_file" \
+"$url_upload_file" \
+-D -||:)"&&_clear_line 1 1>&2
+_clear_line 1 1>&2
+case "$uploadlink_upload_file" in
+*'ocation: '*'upload_id'*)uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }"|while read -r line;do printf "%s\n" "${line%%"$(printf '\r')"}"&&break;done)"&&return 0;;
+*)return 1
+esac
+return 0
+}
+_upload_file_from_uri(){
+_print_center "justify" "Uploading.." "-"
+upload_body_upload_file="$(_api_request ${CURL_PROGRESS:-} \
+-X PUT \
+-H "Content-Type: $mime_type_upload_file" \
+-H "Content-Length: $content_length_upload_file" \
+-H "Slug: $print_slug_upload_file" \
+-T "$input_upload_file" \
+-o- \
+--url "$uploadlink_upload_file" \
+--globoff \
+${CURL_SPEED:-} ${resume_args1_upload_file:-} ${resume_args2_upload_file:-} \
+-H "$resume_args3_upload_file"||:)"
+[ -z "${VERBOSE_PROGRESS:-}" ]&&for _ in 1 2;do _clear_line 1;done&&"${1:-:}"
+return 0
+}
+_normal_logging_upload(){
+[ -z "${VERBOSE_PROGRESS:-}" ]&&_clear_line 1
+"${QUIET:-_print_center}" "justify" "$slug_upload_file " "| $readable_size_upload_file | ${STRING:-}" "="
+return 0
+}
+_log_upload_session(){
+[ "$inputsize_upload_file" -gt 1000000 ]&&printf "%s\n" "$uploadlink_upload_file" >|"$__file_upload_file"
+return 0
+}
+_remove_upload_session(){
+rm -f "$__file_upload_file"
+return 0
+}
+_full_upload(){
+_generate_upload_link||{ _error_logging_upload "$print_slug_upload_file" "$uploadlink_upload_file"||return 1;}
+_log_upload_session
+_upload_file_from_uri
+_collect_file_info "$upload_body_upload_file" "$print_slug_upload_file"||return 1
+_normal_logging_upload
+_remove_upload_session
+return 0
+}
+_share_id(){
+[ $# -lt 2 ]&&printf "Missing arguments\n"&&return 1
+id_share_id="$1" role_share_id="${2:?Missing role}" share_email_share_id="$3" role_share_id="reader" type_share_id="${share_email_share_id:+user}"
+unset post_data_share_id response_share_id
+"$EXTRA_LOG" "justify" "Sharing.." "-" 1>&2
+post_data_share_id="{\"role\":\"$role_share_id\",\"type\":\"${type_share_id:-anyone}\"${share_email_share_id:+,\"emailAddress\":\"$share_email_share_id\"}}"
+response_share_id="$(_api_request "$CURL_PROGRESS_EXTRA" \
+-X POST \
+-H "Content-Type: application/json; charset=UTF-8" \
+-d "$post_data_share_id" \
+"$API_URL/drive/$API_VERSION/files/$id_share_id/permissions?supportsAllDrives=true&includeItemsFromAllDrives=true"||:)"&&_clear_line 1 1>&2
+_clear_line 1 1>&2
+{ printf "%s\n" "$response_share_id"|_json_value id 1 1 2>|/dev/null 1>&2&&return 0;}||{ printf "%s\n" "Error: Cannot Share." 1>&2&&printf "%s\n" "$response_share_id" 1>&2&&return 1;}
+}
+_api_request(){
+. "${TMPFILE:-}_ACCESS_TOKEN"
+curl --compressed \
+-H "Authorization: Bearer ${ACCESS_TOKEN:-}" \
+"$@"
+}
+_collect_file_info(){
+json_collect_file_info="$1" info_collect_file_info=""
+FILE_ID="$(printf "%s\n" "$json_collect_file_info"|_json_value id 1 1)"||{ _error_logging_upload "$2" "$json_collect_file_info"||return 1;}
+{ [ -z "$LOG_FILE_ID" ]||[ -d "$LOG_FILE_ID" ];}&&return 0
+info_collect_file_info="Link: https://drive.google.com/open?id=$FILE_ID
+Name: $(printf "%s\n" "$json_collect_file_info"|_json_value name 1 1||:)
+ID: $FILE_ID
+Type: $(printf "%s\n" "$json_collect_file_info"|_json_value mimeType 1 1||:)"
+printf "%s\n\n" "$info_collect_file_info" >>"$LOG_FILE_ID"
+return 0
+}
+_error_logging_upload(){
+log_error_logging_upload="$2"
+"${QUIET:-_print_center}" "justify" "Upload ERROR" ", ${1:-} not ${STRING:-uploaded}." "=" 1>&2
+case "$log_error_logging_upload" in
+*'"message": "User rate limit exceeded."'*)printf "%s\n\n%s\n" "$log_error_logging_upload" \
+"Today's upload limit reached for this account. Use another account to upload or wait for tomorrow." \
+1>&2
+export RETRY=0
+;;
+''|*)printf "%s\n" "$log_error_logging_upload" 1>&2
+esac
+printf "\n\n\n" 1>&2
+return 1
+}
+_get_rootdir_id(){
+file_gen_final_list="${1:?Error: give filename}"
+rootdir_gen_final_list="$(_dirname "$file_gen_final_list")"
+temp_gen_final_list="$(printf "%s\n" "${DIRIDS:?Error: DIRIDS Missing}"|grep -F "|:_//_:|$rootdir_gen_final_list|:_//_:|"||:)"
+printf "%s\n" "${temp_gen_final_list%%"|:_//_:|$rootdir_gen_final_list|:_//_:|"}"
+return 0
+}
+_upload_file_main(){
+[ $# -lt 2 ]&&printf "Missing arguments\n"&&return 1
+file_upload_file_main="$2" sleep_upload_file_main=0
+{ [ "$1" = parse ]&&dirid_upload_file_main="$(_get_rootdir_id "$file_upload_file_main")";}||dirid_upload_file_main="$3"
+retry_upload_file_main="${RETRY:-0}"&&unset RETURN_STATUS
+until [ "$retry_upload_file_main" -le 0 ]&&[ -n "$RETURN_STATUS" ];do
+if [ -n "$4" ];then
+{ _upload_file "${UPLOAD_MODE:-create}" "$file_upload_file_main" "$dirid_upload_file_main" 2>|/dev/null 1>&2&&RETURN_STATUS=1&&break;}||RETURN_STATUS=2
+else
+{ _upload_file "${UPLOAD_MODE:-create}" "$file_upload_file_main" "$dirid_upload_file_main"&&RETURN_STATUS=1&&break;}||RETURN_STATUS=2
+fi
+[ "$((retry_upload_file_main-=1))" -lt 1 ]&&sleep "$((sleep_upload_file_main+=1))"
+continue
+done
+[ -n "$4" ]&&{
+{ [ "$RETURN_STATUS" = 1 ]&&printf "%s\n" "$file_upload_file_main";}||printf "%s\n" "$file_upload_file_main" 1>&2
+}
+return 0
+}
+_upload_folder(){
+export VERBOSE VERBOSE_PROGRESS NO_OF_PARALLEL_JOBS TMPFILE NO_OF_FILES
+[ $# -lt 3 ]&&printf "Missing arguments\n"&&return 1
+mode_upload_folder="$1" PARSE_MODE="$2" files_upload_folder="$3" ID="${4:-}"
+SUCCESS_STATUS=0 SUCCESS_FILES="" ERROR_STATUS=0 ERROR_FILES=""
+case "$mode_upload_folder" in
+normal)[ "$PARSE_MODE" = parse ]&&_clear_line 1&&_newline "\n"
+while read -r file <&4;do
+_upload_file_main "$PARSE_MODE" "$file" "$ID"
+{ [ "$RETURN_STATUS" = 1 ]&&: "$((SUCCESS_STATUS+=1))"&&SUCCESS_FILES="$(printf "%b\n" "${SUCCESS_STATUS:+$SUCCESS_STATUS\n}$file")";}||{ : "$((ERROR_STATUS+=1))"&&ERROR_FILES="$(printf "%b\n" "${ERROR_STATUS:+$ERROR_STATUS\n}$file")";}
+if [ -n "${VERBOSE:-$VERBOSE_PROGRESS}" ];then
+_print_center "justify" "Status: $SUCCESS_STATUS Uploaded" " | $ERROR_STATUS Failed" "="&&_newline "\n"
+else
+for _ in 1 2;do _clear_line 1;done
+_print_center "justify" "Status: $SUCCESS_STATUS Uploaded" " | $ERROR_STATUS Failed" "="
+fi
+done 4<<EOF
+$(printf "%s\n" "$files_upload_folder")
+EOF
+;;
+parallel)\
+NO_OF_PARALLEL_JOBS_FINAL="$((NO_OF_PARALLEL_JOBS>NO_OF_FILES?NO_OF_FILES:NO_OF_PARALLEL_JOBS))"
+[ -f "$TMPFILE"SUCCESS ]&&rm "$TMPFILE"SUCCESS
+[ -f "$TMPFILE"ERROR ]&&rm "$TMPFILE"ERROR
+export PARSE_MODE ID
+(printf "%s\n" "$files_upload_folder"|xargs -P"$NO_OF_PARALLEL_JOBS_FINAL" -I "{}" -n 1 sh -c '
+            eval "${SOURCE_UTILS}"
+            _upload_file_main "${PARSE_MODE}" "{}" "${ID}" true
+            ' 1>|"$TMPFILE"SUCCESS 2>|"$TMPFILE"ERROR)&
+pid="$!"
+until [ -f "$TMPFILE"SUCCESS ]||[ -f "$TMPFILE"ERORR ];do sleep 0.5;done
+[ "$PARSE_MODE" = parse ]&&_clear_line 1
+_newline "\n"
+until ! kill -0 "$pid" 2>|/dev/null 1>&2;do
+SUCCESS_STATUS="$(($(wc -l <"$TMPFILE"SUCCESS)))"
+ERROR_STATUS="$(($(wc -l <"$TMPFILE"ERROR)))"
+sleep 1
+[ "$((SUCCESS_STATUS+ERROR_STATUS))" != "$TOTAL" ]&&_clear_line 1&&"${QUIET:-_print_center}" "justify" "Status" ": $SUCCESS_STATUS Uploaded | $ERROR_STATUS Failed" "="
+TOTAL="$((SUCCESS_STATUS+ERROR_STATUS))"
+done
+SUCCESS_STATUS="$(($(wc -l <"$TMPFILE"SUCCESS)))" SUCCESS_FILES="$(cat "$TMPFILE"SUCCESS)"
+ERROR_STATUS="$(($(wc -l <"$TMPFILE"ERROR)))" ERROR_FILES="$(cat "$TMPFILE"ERROR)"
+export SUCCESS_FILES ERROR_FILES
+;;
+*):
+esac
+return 0
+}
+_cleanup_config(){
+config="${1:?Error: Missing config}"&&unset values_regex _tmp
+! [ -f "$config" ]&&return 0
+while read -r line <&4&&[ -n "$line" ];do
+expiry_value_name="${line%%=*}"
+token_value_name="${expiry_value_name%%_EXPIRY}"
+_tmp="${line##*=}"&&_tmp="${_tmp%\"}"&&expiry="${_tmp#\"}"
+[ "$expiry" -le "$(_epoch)" ]&&values_regex="${values_regex:+$values_regex|}$expiry_value_name=\".*\"|$token_value_name=\".*\""
+done 4<<EOF
+$(grep -F ACCESS_TOKEN_EXPIRY -- "$config"||:)
+EOF
+chmod u+w -- "$config"&&printf "%s\n" "$(grep -Ev "^\$${values_regex:+|$values_regex}" -- "$config")" >|"$config"&&chmod "a-w-r-x,u+r" -- "$config"
+return 0
+}
+_setup_arguments(){
+[ $# = 0 ]&&printf "Missing arguments\n"&&return 1
+unset CONTINUE_WITH_NO_INPUT
+export CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
+INFO_PATH="$HOME/.google-drive-upload" CONFIG_INFO="$INFO_PATH/google-drive-upload.configpath"
+[ -f "$CONFIG_INFO" ]&&. "$CONFIG_INFO"
+CONFIG="${CONFIG:-$HOME/.googledrive.conf}"
+unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
+export API_URL="https://www.googleapis.com"
+export API_VERSION="v3" \
+SCOPE="$API_URL/auth/drive" \
+REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob" \
+TOKEN_URL="https://accounts.google.com/o/oauth2/token"
+_parse_arguments "_parser_setup_flags" "$@"||return 1
+_check_debug
+[ -n "$VERBOSE_PROGRESS" ]&&unset VERBOSE&&export CURL_PROGRESS=""
+[ -n "$QUIET" ]&&export CURL_PROGRESS="-s"
+mkdir -p "$INFO_PATH"||return 1
+[ -n "$DELETE_ACCOUNT_NAME" ]&&_delete_account "$DELETE_ACCOUNT_NAME"
+[ -n "$LIST_ACCOUNTS" ]&&_all_accounts
+[ -z "${INPUT_FILE_1:-${INPUT_ID_1:-$FOLDERNAME}}" ]&&{
+[ -z "${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-$NEW_ACCOUNT_NAME}}" ]&&_short_help
+[ -n "${DELETE_ACCOUNT_NAME:-${LIST_ACCOUNTS:-}}" ]&&exit 0
+[ -n "$NEW_ACCOUNT_NAME" ]&&CONTINUE_WITH_NO_INPUT="true"
+}
+[ -z "$CHECK_MODE" ]&&{
+case "${SKIP_DUPLICATES:-$OVERWRITE}" in
+"Overwrite")export CHECK_MODE="1";;
+"Skip Existing")export CHECK_MODE="2";;
+*):
+esac
+}
+return 0
+}
+_setup_traps(){
+export SUPPORT_ANSI_ESCAPES TMPFILE ACCESS_TOKEN ACCESS_TOKEN_EXPIRY INITIAL_ACCESS_TOKEN ACCOUNT_NAME CONFIG ACCESS_TOKEN_SERVICE_PID
+_cleanup(){
+[ -n "$SUPPORT_ANSI_ESCAPES" ]&&printf "\033[?25h\033[?7h"
+{
+[ -f "${TMPFILE}_ACCESS_TOKEN" ]&&{
+. "${TMPFILE}_ACCESS_TOKEN"
+[ "$INITIAL_ACCESS_TOKEN" = "$ACCESS_TOKEN" ]||{
+_update_config "ACCOUNT_${ACCOUNT_NAME}_ACCESS_TOKEN" "$ACCESS_TOKEN" "$CONFIG"
+_update_config "ACCOUNT_${ACCOUNT_NAME}_ACCESS_TOKEN_EXPIRY" "$ACCESS_TOKEN_EXPIRY" "$CONFIG"
+}
+}||: 1>|/dev/null
+[ -n "$ACCESS_TOKEN_SERVICE_PID" ]&&{
+token_service_pids="$(ps --ppid="$ACCESS_TOKEN_SERVICE_PID" -o pid=)"
+kill "$ACCESS_TOKEN_SERVICE_PID"
+}||: 1>|/dev/null
+script_children_pids="$(ps --ppid="$MAIN_PID" -o pid=)"
+kill $token_service_pids $script_children_pids 1>|/dev/null
+rm -f "${TMPFILE:?}"*
+export abnormal_exit&&if [ -n "$abnormal_exit" ];then
+printf "\n\n%s\n" "Script exited manually."
+kill "${_SCRIPT_KILL_SIGNAL:--9}" -$$&
+else
+{ _cleanup_config "$CONFIG"&&[ "${GUPLOAD_INSTALLED_WITH:-}" = script ]&&_auto_update;} 1>|/dev/null&
+fi
+} 2>|/dev/null||:
+return 0
+}
+trap 'abnormal_exit="1" ; exit' INT TERM
+trap '_cleanup' EXIT
+trap '' TSTP
+export MAIN_PID="$$"
+}
+_setup_root_dir(){
+export ROOTDIR ROOT_FOLDER ROOT_FOLDER_NAME QUIET ACCOUNT_NAME CONFIG UPDATE_DEFAULT_ROOTDIR
+_check_root_id(){
+_setup_root_dir_json="$(_drive_info "$(_extract_id "$ROOT_FOLDER")" "id")"
+if ! rootid_setup_root_dir="$(printf "%s\n" "$_setup_root_dir_json"|_json_value id 1 1)";then
+if printf "%s\n" "$_setup_root_dir_json"|grep "File not found" -q;then
+"${QUIET:-_print_center}" "justify" "Given root folder" " ID/URL invalid." "=" 1>&2
+else
+printf "%s\n" "$_setup_root_dir_json" 1>&2
+fi
+return 1
+fi
+ROOT_FOLDER="$rootid_setup_root_dir"
+"${1:-:}" "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER" "$ROOT_FOLDER" "$CONFIG"||return 1
+return 0
+}
+_check_root_id_name(){
+ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "$ROOT_FOLDER")" "name"|_json_value name 1 1||:)"
+"${1:-:}" "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER_NAME" "$ROOT_FOLDER_NAME" "$CONFIG"||return 1
+return 0
+}
+_set_value indirect ROOT_FOLDER "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER"
+_set_value indirect ROOT_FOLDER_NAME "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER_NAME"
+if [ -n "${ROOTDIR:-}" ];then
+ROOT_FOLDER="$ROOTDIR"&&{ _check_root_id "$UPDATE_DEFAULT_ROOTDIR"||return 1;}&&unset ROOT_FOLDER_NAME
+elif [ -z "$ROOT_FOLDER" ];then
+{ [ -t 1 ]&&"${QUIET:-_print_center}" "normal" "Enter root folder ID or URL, press enter for default ( root )" " "&&printf -- "-> "&&read -r ROOT_FOLDER&&[ -n "$ROOT_FOLDER" ]&&{ _check_root_id _update_config||return 1;};}||{
+ROOT_FOLDER="root"
+_update_config "ACCOUNT_${ACCOUNT_NAME}_ROOT_FOLDER" "$ROOT_FOLDER" "$CONFIG"||return 1
+}&&printf "\n\n"
+elif [ -z "$ROOT_FOLDER_NAME" ];then
+_check_root_id_name _update_config||return 1
+fi
+[ -z "$ROOT_FOLDER_NAME" ]&&{ _check_root_id_name "$UPDATE_DEFAULT_ROOTDIR"||return 1;}
+return 0
+}
+_setup_workspace(){
+export FOLDERNAME ROOT_FOLDER ROOT_FOLDER_NAME WORKSPACE_FOLDER_ID WORKSPACE_FOLDER_NAME
+if [ -z "$FOLDERNAME" ];then
+WORKSPACE_FOLDER_ID="$ROOT_FOLDER"
+WORKSPACE_FOLDER_NAME="$ROOT_FOLDER_NAME"
+else
+WORKSPACE_FOLDER_ID="$(_create_directory "$FOLDERNAME" "$ROOT_FOLDER")"||{ printf "%s\n" "$WORKSPACE_FOLDER_ID" 1>&2&&return 1;}
+WORKSPACE_FOLDER_NAME="$(_drive_info "$WORKSPACE_FOLDER_ID" name|_json_value name 1 1)"||{ printf "%s\n" "$WORKSPACE_FOLDER_NAME" 1>&2&&return 1;}
+fi
+return 0
+}
+_process_arguments(){
+export SHARE SHARE_ROLE SHARE_EMAIL HIDE_INFO QUIET SKIP_DUPLICATES OVERWRITE \
+WORKSPACE_FOLDER_ID SOURCE_UTILS EXTRA_LOG SKIP_SUBDIRS INCLUDE_FILES EXCLUDE_FILES \
+QUIET PARALLEL_UPLOAD VERBOSE VERBOSE_PROGRESS CHECK_MODE DESCRIPTION DESCRIPTION_ALL \
+UPLOAD_MODE HIDE_INFO
+_share_and_print_link(){
+"${SHARE:-:}" "${1:-}" "$SHARE_ROLE" "$SHARE_EMAIL"
+[ -z "$HIDE_INFO" ]&&{
+_print_center "justify" "DriveLink" "${SHARE:+ (SHARED[$(printf "%.1s" "$SHARE_ROLE")])}" "-"
+_support_ansi_escapes&&[ "$((COLUMNS))" -gt 45 ] 2>|/dev/null&&_print_center "normal" '^ ^ ^' ' '
+"${QUIET:-_print_center}" "normal" "https://drive.google.com/open?id=${1:-}" " "
+}
+return 0
+}
+_SEEN="" index_process_arguments=0
+TOTAL_FILE_INPUTS="$((TOTAL_FILE_INPUTS<0?0:TOTAL_FILE_INPUTS))"
+until [ "$index_process_arguments" -eq "$TOTAL_FILE_INPUTS" ];do
+input=""
+_set_value i input "INPUT_FILE_$((index_process_arguments+=1))"
+case "$_SEEN" in
+*"$input"*)continue;;
+*)_SEEN="$_SEEN$input"
+esac
+if [ -f "$input" ];then
+export DESCRIPTION_FILE="$DESCRIPTION"
+_print_center "justify" "Given Input" ": FILE" "="
+_print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "="&&_newline "\n"
+_upload_file_main noparse "$input" "$WORKSPACE_FOLDER_ID"
+if [ "${RETURN_STATUS:-}" = 1 ];then
+_share_and_print_link "${FILE_ID:-}"
+printf "\n"
+else
+for _ in 1 2;do _clear_line 1;done&&continue
+fi
+elif [ -d "$input" ];then
+input="$(cd "$input"&&pwd)"||return 1
+unset EMPTY
+export DESCRIPTION_FILE="${DESCRIPTION_ALL+:$DESCRIPTION}"
+_print_center "justify" "Given Input" ": FOLDER" "-"
+_print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "="&&_newline "\n"
+FOLDER_NAME="${input##*/}"&&"$EXTRA_LOG" "justify" "Folder: $FOLDER_NAME" "="
+NEXTROOTDIRID="$WORKSPACE_FOLDER_ID"
+"$EXTRA_LOG" "justify" "Processing folder.." "-"
+[ -z "$SKIP_SUBDIRS" ]&&"$EXTRA_LOG" "justify" "Indexing subfolders.." "-"
+DIRNAMES="$(find "$input" -type d -not -empty)"
+NO_OF_FOLDERS="$(($(printf "%s\n" "$DIRNAMES"|wc -l)))"&&NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS-1))"
+[ -z "$SKIP_SUBDIRS" ]&&_clear_line 1
+[ "$NO_OF_SUB_FOLDERS" = 0 ]&&SKIP_SUBDIRS="true"
+"$EXTRA_LOG" "justify" "Indexing files.." "-"
+FILENAMES="$(_tmp='find "'$input'" -type f -name "*" '$INCLUDE_FILES' '$EXCLUDE_FILES''&&eval "$_tmp")"
+_clear_line 1
+if [ -n "$SKIP_SUBDIRS" ];then
+if [ -n "$FILENAMES" ];then
+NO_OF_FILES="$(($(printf "%s\n" "$FILENAMES"|wc -l)))"
+for _ in 1 2;do _clear_line 1;done
+"${QUIET:-_print_center}" "justify" "Folder: $FOLDER_NAME " "| $NO_OF_FILES File(s)" "="&&printf "\n"
+"$EXTRA_LOG" "justify" "Creating folder.." "-"
+{ ID="$(_create_directory "$input" "$NEXTROOTDIRID")"&&export ID;}||{ "${QUIET:-_print_center}" "normal" "Folder creation failed" "-"&&printf "%s\n\n\n" "$ID" 1>&2&&continue;}
+_clear_line 1&&DIRIDS="$ID"
+[ -z "${PARALLEL_UPLOAD:-${VERBOSE:-$VERBOSE_PROGRESS}}" ]&&_newline "\n"
+_upload_folder "${PARALLEL_UPLOAD:-normal}" noparse "$FILENAMES" "$ID"
+[ -n "${PARALLEL_UPLOAD:+${VERBOSE:-$VERBOSE_PROGRESS}}" ]&&_newline "\n\n"
+else
+for _ in 1 2;do _clear_line 1;done&&EMPTY=1
+fi
+else
+if [ -n "$FILENAMES" ];then
+NO_OF_FILES="$(($(printf "%s\n" "$FILENAMES"|wc -l)))"
+for _ in 1 2;do _clear_line 1;done
+"${QUIET:-_print_center}" "justify" "$FOLDER_NAME " "| $((NO_OF_FILES)) File(s) | $((NO_OF_SUB_FOLDERS)) Sub-folders" "="
+_newline "\n"&&"$EXTRA_LOG" "justify" "Creating Folder(s).." "-"&&_newline "\n"
+unset status
+while read -r dir <&4&&{ [ -n "$dir" ]||continue;};do
+[ -n "$status" ]&&__dir="$(_dirname "$dir")"&&__temp="$(printf "%s\n" "$DIRIDS"|grep -F "|:_//_:|$__dir|:_//_:|")"&&NEXTROOTDIRID="${__temp%%"|:_//_:|$__dir|:_//_:|"}"
+NEWDIR="${dir##*/}"&&_print_center "justify" "Name: $NEWDIR" "-" 1>&2
+ID="$(_create_directory "$NEWDIR" "$NEXTROOTDIRID")"||{ "${QUIET:-_print_center}" "normal" "Folder creation failed" "-"&&printf "%s\n\n\n" "$ID" 1>&2&&continue;}
+DIRIDS="$(printf "%b%s|:_//_:|%s|:_//_:|\n" "${DIRIDS:+$DIRIDS\n}" "$ID" "$dir")"
+for _ in 1 2;do _clear_line 1 1>&2;done
+"$EXTRA_LOG" "justify" "Status" ": $((status+=1)) / $((NO_OF_FOLDERS))" "=" 1>&2
+done 4<<EOF
+$(printf "%s\n" "$DIRNAMES")
+EOF
+export DIRIDS
+_clear_line 1
+_upload_folder "${PARALLEL_UPLOAD:-normal}" parse "$FILENAMES"
+[ -n "${PARALLEL_UPLOAD:+${VERBOSE:-$VERBOSE_PROGRESS}}" ]&&_newline "\n\n"
+else
+for _ in 1 2 3;do _clear_line 1;done&&EMPTY=1
+fi
+fi
+export SUCCESS_STATUS ERROR_STATUS ERROR_FILES
+if [ "$EMPTY" != 1 ];then
+[ -z "${VERBOSE:-$VERBOSE_PROGRESS}" ]&&for _ in 1 2;do _clear_line 1;done
+FOLDER_ID="$(_tmp="$(printf "%s\n" "$DIRIDS"|while read -r line;do printf "%s\n" "$line"&&break;done)"&&printf "%s\n" "${_tmp%%"|:_//_:|"*}")"
+[ "$SUCCESS_STATUS" -gt 0 ]&&_share_and_print_link "$FOLDER_ID"
+_newline "\n"
+[ "$SUCCESS_STATUS" -gt 0 ]&&"${QUIET:-_print_center}" "justify" "Total Files " "Uploaded: $SUCCESS_STATUS" "="
+[ "$ERROR_STATUS" -gt 0 ]&&"${QUIET:-_print_center}" "justify" "Total Files " "Failed: $ERROR_STATUS" "="&&{
+if [ -t 1 ];then
+{ [ "$ERROR_STATUS" -le 25 ]&&printf "%s\n" "$ERROR_FILES";}||{
+epoch_time="$(date +'%s')" log_file_name="${0##*/}_${FOLDER_NAME}_$epoch_time.failed"
+i=0&&until ! [ -f "$log_file_name" ];do
+: $((i+=1))&&log_file_name="${0##*/}_${FOLDER_NAME}_$((epoch_time+i)).failed"
+done
+printf "%s\n%s\n%s\n\n%s\n%s\n" \
+"Folder name: $FOLDER_NAME | Folder ID: $FOLDER_ID" \
+"Run this command to retry the failed uploads:" \
+"    ${0##*/} --skip-duplicates \"$input\" --root-dir \"$NEXTROOTDIRID\" ${SKIP_SUBDIRS:+-s} ${PARALLEL_UPLOAD:+--parallel} ${PARALLEL_UPLOAD:+$NO_OF_PARALLEL_JOBS}" \
+"Failed files:" \
+"$ERROR_FILES" >>"$log_file_name"
+printf "%s\n" "To see the failed files, open \"$log_file_name\""
+printf "%s\n" "To retry the failed uploads only, use -d / --skip-duplicates flag. See log file for more help."
+}
+else
+printf "%s\n" "$ERROR_FILES"
+fi
+}
+printf "\n"
+else
+for _ in 1 2 3;do _clear_line 1;done
+"${QUIET:-_print_center}" 'justify' "Empty Folder" ": $FOLDER_NAME" "=" 1>&2
+printf "\n"
+fi
+fi
+done
+_SEEN="" index_process_arguments=0
+TOTAL_ID_INPUTS="$((TOTAL_ID_INPUTS<0?0:TOTAL_ID_INPUTS))"
+until [ "$index_process_arguments" -eq "$TOTAL_ID_INPUTS" ];do
+gdrive_id=""
+_set_value gdrive_id "INPUT_ID_$((index_process_arguments+=1))"
+case "$_SEEN" in
+*"$gdrive_id"*)continue;;
+*)_SEEN="$_SEEN$gdrive_id"
+esac
+_print_center "justify" "Given Input" ": ID" "="
+"$EXTRA_LOG" "justify" "Checking if id exists.." "-"
+[ "$CHECK_MODE" = "md5Checksum" ]&&param="md5Checksum"
+json="$(_drive_info "$gdrive_id" "name,mimeType,size${param:+,$param}")"||:
+if ! printf "%s\n" "$json"|_json_value code 1 1 2>|/dev/null 1>&2;then
+type="$(printf "%s\n" "$json"|_json_value mimeType 1 1||:)"
+name="$(printf "%s\n" "$json"|_json_value name 1 1||:)"
+size="$(printf "%s\n" "$json"|_json_value size 1 1||:)"
+[ "$CHECK_MODE" = "md5Checksum" ]&&md5="$(printf "%s\n" "$json"|_json_value md5Checksum 1 1||:)"
+for _ in 1 2;do _clear_line 1;done
+case "$type" in
+*folder*)export \
+DESCRIPTION_FILE="${DESCRIPTION_ALL+:$DESCRIPTION}"
+"${QUIET:-_print_center}" "justify" "Folder not supported." "=" 1>&2&&_newline "\n" 1>&2&&continue
+;;
+*)export \
+DESCRIPTION_FILE="$DESCRIPTION"
+_print_center "justify" "Given Input" ": File ID" "="
+_print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "="&&_newline "\n"
+_clone_file "${UPLOAD_MODE:-create}" "$gdrive_id" "$WORKSPACE_FOLDER_ID" "$name" "$size" "$md5"||{ for _ in 1 2;do _clear_line 1;done&&continue;}
+esac
+_share_and_print_link "$FILE_ID"
+printf "\n"
+else
+_clear_line 1
+"${QUIET:-_print_center}" "justify" "File ID (${HIDE_INFO:-gdrive_id})" " invalid." "=" 1>&2
+printf "\n"
+fi
+done
+return 0
+}
+_main_helper(){
+_setup_arguments "$@"||exit 1
+"${SKIP_INTERNET_CHECK:-_check_internet}"||exit 1
+TMPFILE="$(command -v mktemp 1>|/dev/null&&mktemp -u)"||TMPFILE="$(pwd)/.$(_t="$(_epoch)"&&printf "%s\n" "$((_t*_t))").tmpfile"
+export TMPFILE
+_setup_traps
+"$EXTRA_LOG" "justify" "Checking credentials.." "-"
+{ _check_credentials&&_clear_line 1;}||{ "${QUIET:-_print_center}" "normal" "[ Error: Credentials checking failed ]" "="&&exit 1;}
+"${QUIET:-_print_center}" "normal" " Account: $ACCOUNT_NAME " "="
+"$EXTRA_LOG" "justify" "Checking root dir.." "-"
+{ _setup_root_dir&&_clear_line 1;}||{ "${QUIET:-_print_center}" "normal" "[ Error: Rootdir setup failed ]" "="&&exit 1;}
+_print_center "justify" "Root dir properly configured." "="
+[ -n "$CONTINUE_WITH_NO_INPUT" ]&&exit 0
+"$EXTRA_LOG" "justify" "Checking Workspace Folder.." "-"
+{ _setup_workspace&&for _ in 1 2;do _clear_line 1;done;}||{ "${QUIET:-_print_center}" "normal" "[ Error: Workspace setup failed ]" "="&&exit 1;}
+_print_center "justify" "Workspace Folder: $WORKSPACE_FOLDER_NAME" "="
+"${HIDE_INFO:-_print_center}" "normal" " $WORKSPACE_FOLDER_ID " "-"&&_newline "\n"
+START="$(_epoch)"
+[ -n "$SUPPORT_ANSI_ESCAPES" ]&&printf "\033[?25l"
+_process_arguments
+END="$(_epoch)"
+DIFF="$((END-START))"
+"${QUIET:-_print_center}" "normal" " Time Elapsed: ""$((DIFF/60))"" minute(s) and ""$((DIFF%60))"" seconds. " "="
+}
+set +a
+main(){
+[[ $# == 0 ]]&&{
+printf "No valid arguments provided, use -h/--help flag to see usage.\n"
+exit 0
+}
+[[ -z $SELF_SOURCE ]]&&{
+set -a
+export UTILS_FOLDER="${UTILS_FOLDER:-$PWD}"
+export COMMON_PATH="$UTILS_FOLDER/common"
+{ . "$UTILS_FOLDER/bash/common-utils.bash"&&. "$COMMON_PATH/parser.sh"&&. "$COMMON_PATH/upload-flags.sh"&&. "$COMMON_PATH/auth-utils.sh"&&. "$COMMON_PATH/common-utils.sh"&&. "$COMMON_PATH/drive-utils.sh"&&. "$COMMON_PATH/upload-utils.sh"&&. "$COMMON_PATH/upload-common.sh";}||{ printf "Error: Unable to source util files.\n"&&exit 1;}
+set +a
+}
+export SOURCE_UTILS=""
+[[ ${BASH_VERSINFO:-0} -ge 4 ]]||{ printf "Bash version lower than 4.x not supported.\n"&&return 1;}
+set -o noclobber -o pipefail||exit 1
+export _SCRIPT_KILL_SIGNAL="--"
+_main_helper "$@"||exit 1
+}
+{ [[ -z $SOURCED_GUPLOAD ]]&&main "$@";}||:
