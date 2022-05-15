@@ -404,32 +404,32 @@ EOF
 
     _parser_setup_flag "-in --include" 1 required "pattern"
     _parser_setup_flag_help \
-        "Only include the files with the given pattern to upload - Applicable for folder uploads.
+        "Only upload the files which contains the given pattern - Applicable for folder uploads.
 
-e.g: ${0##*/} local_folder --include '*1*', will only include with files with pattern '1' in the name."
+e.g: ${0##*/} local_folder --include 1, will only include with files with pattern 1 in the name. Regex can be used which works with grep -E command."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset INCLUDE_FILES
 EOF
 
     _parser_setup_flag_process 4<< 'EOF'
-INCLUDE_FILES="${INCLUDE_FILES} -name '${2}' " && _parser_shift
+export INCLUDE_FILES="${INCLUDE_FILES:+${INCLUDE_FILES}|}${2}" && _parser_shift
 EOF
 
     ###################################################
 
     _parser_setup_flag "-ex --exclude" 1 required "pattern"
     _parser_setup_flag_help \
-        "Exclude the files with the given pattern from uploading. - Applicable for folder uploads.
+        "Only download the files which does not contain the given pattern - Applicable for folder downloads.
 
-e.g: ${0##*/} local_folder --exclude "*1*", will exclude all the files pattern '1' in the name."
+e.g: ${0##*/} local_folder --exclude 1, will only include with files with pattern 1 not present in the name. Regex can be used which works with grep -E command."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset EXCLUDE_FILES
 EOF
 
     _parser_setup_flag_process 4<< 'EOF'
-EXCLUDE_FILES="${EXCLUDE_FILES} -name ! '${2}' " && _parser_shift
+export EXCLUDE_FILES="${EXCLUDE_FILES:+${EXCLUDE_FILES}|}${2}" && _parser_shift
 EOF
 
     ###################################################

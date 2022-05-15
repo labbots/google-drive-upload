@@ -284,12 +284,26 @@ _process_arguments() {
             [ -z "${SKIP_SUBDIRS}" ] && "${EXTRA_LOG}" "justify" "Indexing subfolders.." "-"
             # Do not create empty folders during a recursive upload. Use of find in this section is important.
             DIRNAMES="$(find "${input}" -type d -not -empty)"
+
+            # include or exlude the files if -in or -ex flag was used, use grep
+            [ -n "${INCLUDE_FILES}" ] && _tmp_dirnames="$(printf "%s\n" "${DIRNAMES}" | grep -E "${INCLUDE_FILES}")" &&
+                DIRNAMES="${_tmp_dirnames}"
+            [ -n "${EXCLUDE_FILES}" ] && _tmp_dirnames="$(printf "%s\n" "${DIRNAMES}" | grep -Ev "${INCLUDE_FILES}")" &&
+                DIRNAMES="${_tmp_dirnames}"
+
             NO_OF_FOLDERS="$(($(printf "%s\n" "${DIRNAMES}" | wc -l)))" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
             [ -z "${SKIP_SUBDIRS}" ] && _clear_line 1
             [ "${NO_OF_SUB_FOLDERS}" = 0 ] && SKIP_SUBDIRS="true"
 
             "${EXTRA_LOG}" "justify" "Indexing files.." "-"
-            FILENAMES="$(_tmp='find "'${input}'" -type f -name "*" '${INCLUDE_FILES}' '${EXCLUDE_FILES}'' && eval "${_tmp}")"
+            FILENAMES="$(find "${input}" -type f)"
+
+            # include or exlude the files if -in or -ex flag was used, use grep
+            [ -n "${INCLUDE_FILES}" ] && _tmp_filenames="$(printf "%s\n" "${FILENAMES}" | grep -E "${EXCLUDE_FILES}")" &&
+                FILENAMES="${_tmp_filenames}"
+            [ -n "${EXCLUDE_FILES}" ] && _tmp_filenames="$(printf "%s\n" "${FILENAMES}" | grep -Ev "${EXCLUDE_FILES}")" &&
+                FILENAMES="${_tmp_filenames}"
+
             _clear_line 1
 
             # Skip the sub folders and find recursively all the files and upload them.
