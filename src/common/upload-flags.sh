@@ -566,7 +566,8 @@ EOF
         "Print help for all flags and basic usage instructions.
 
 To see help for a specific flag, --help flag_name ( with or without dashes )
-    e.g: ${0##*/} --help aria"
+Can also specify multiple flag names
+    e.g: ${0##*/} --help config list-accounts"
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 ###################################################
@@ -576,14 +577,16 @@ To see help for a specific flag, --help flag_name ( with or without dashes )
 ###################################################
 _usage() {
     [ -n "${1}" ] && {
-        help_usage_usage=""
-        _flag_help "${1}" help_usage_usage
+        for flag_usage in "${@}"; do
+            help_usage_usage=""
+            _flag_help "${flag_usage}" help_usage_usage
 
-        if [ -z "${help_usage_usage}" ]; then
-            printf "%s\n" "Error: No help found for ${1}"
-        else
-            printf "%s\n%s\n%s\n" "${__PARSER_BAR}" "${help_usage_usage}" "${__PARSER_BAR}"
-        fi
+            if [ -z "${help_usage_usage}" ]; then
+                printf "%s\n" "Error: No help found for ${flag_usage}"
+            else
+                printf "%s\n%s\n%s\n" "${__PARSER_BAR}" "${help_usage_usage}" "${__PARSER_BAR}"
+            fi
+        done
         exit 0
     }
 
@@ -593,7 +596,7 @@ _usage() {
 EOF
 
     _parser_setup_flag_process 4<< 'EOF'
-_usage "${2}"
+shift 1 && _usage "${@}"
 EOF
     ###################################################
 
