@@ -367,7 +367,11 @@ export DELETE_ACCOUNT_NAME="${2}" && _parser_shift
 EOF
 _parser_setup_flag "-c -C --create-dir" 1 required "foldername"
 _parser_setup_flag_help \
-"Option to create directory. Will print folder id. Can be used to provide input folder, see README."
+"Option to create directory on drive. Will print folder id. If this option is used, then input files/folders are optional.
+
+Also supports specifying sub folders, -c 'Folder1/folder2/test'.
+Three folders will be created, test inside folder2, folder2 inside Folder1 and so on.
+Input files and folders will be uploaded inside test folder."
 _parser_setup_flag_preprocess 4<<'EOF'
 unset FOLDERNAME
 EOF
@@ -1201,6 +1205,15 @@ return 0
 _print_center_quiet(){
 { [ $# = 3 ]&&printf "%s\n" "$2";}||{ printf "%s%s\n" "$2" "$3";}
 }
+_split(){
+set -f
+old_ifs_split=$IFS
+IFS=$2
+set -- $1
+printf '%s\n' "$@"
+IFS=$old_ifs_split
+set +f
+}
 _support_ansi_escapes(){
 unset ansi_escapes
 case "${TERM:-}" in
@@ -1746,8 +1759,12 @@ if [ -z "$FOLDERNAME" ];then
 WORKSPACE_FOLDER_ID="$ROOT_FOLDER"
 WORKSPACE_FOLDER_NAME="$ROOT_FOLDER_NAME"
 else
-WORKSPACE_FOLDER_ID="$(_create_directory "$FOLDERNAME" "$ROOT_FOLDER")"||{ printf "%s\n" "$WORKSPACE_FOLDER_ID" 1>&2&&return 1;}
+while read -r foldername <&4&&{ [ -n "$foldername" ]||continue;};do
+WORKSPACE_FOLDER_ID="$(_create_directory "$foldername" "${WORKSPACE_FOLDER_ID:-$ROOT_FOLDER}")"||{ printf "%s\n" "$WORKSPACE_FOLDER_ID" 1>&2&&return 1;}
 WORKSPACE_FOLDER_NAME="$(_drive_info "$WORKSPACE_FOLDER_ID" name|_json_value name 1 1)"||{ printf "%s\n" "$WORKSPACE_FOLDER_NAME" 1>&2&&return 1;}
+done 4<<EOF
+$(_split "$FOLDERNAME" "/")
+EOF
 fi
 return 0
 }

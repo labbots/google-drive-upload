@@ -390,6 +390,15 @@ return 0
 _print_center_quiet(){
 { [ $# = 3 ]&&printf "%s\n" "$2";}||{ printf "%s%s\n" "$2" "$3";}
 }
+_split(){
+set -f
+old_ifs_split=$IFS
+IFS=$2
+set -- $1
+printf '%s\n' "$@"
+IFS=$old_ifs_split
+set +f
+}
 _support_ansi_escapes(){
 unset ansi_escapes
 case "${TERM:-}" in

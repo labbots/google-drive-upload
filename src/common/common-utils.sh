@@ -321,6 +321,44 @@ _print_center_quiet() {
 }
 
 ###################################################
+# Split a string on a delimiter
+# Arguments: 2
+#   ${1} = string
+#   ${2} = delimiter
+# Print each list value on its own line.
+# Reference: https://github.com/dylanaraps/pure-sh-bible#split-a-string-on-a-delimiter
+###################################################
+_split() {
+    # Disable globbing. This ensures that the word-splitting is safe.
+    set -f
+
+    # Store the current value of 'IFS' so we can restore it later.
+    # shellcheck disable=2250
+    old_ifs_split=$IFS
+
+    # Change the field separator to what we're
+    # splitting on.
+    IFS=$2
+
+    # Create an argument list splitting at each
+    # occurance of '$2'.
+    # This is safe to disable as it just warns against
+    # word-splitting which is the behavior we expect.
+    # shellcheck disable=2086
+    set -- $1
+
+    # Print each list value on its own line.
+    printf '%s\n' "$@"
+
+    # Restore the value of 'IFS'.
+    # shellcheck disable=2250
+    IFS=$old_ifs_split
+
+    # Re-enable globbing.
+    set +f
+}
+
+###################################################
 # Check if script terminal supports ansi escapes
 # Result: return 1 or 0
 ###################################################

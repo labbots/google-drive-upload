@@ -108,7 +108,11 @@ EOF
 
     _parser_setup_flag "-c -C --create-dir" 1 required "foldername"
     _parser_setup_flag_help \
-        "Option to create directory. Will print folder id. Can be used to provide input folder, see README."
+        "Option to create directory on drive. Will print folder id. If this option is used, then input files/folders are optional.
+
+Also supports specifying sub folders, -c 'Folder1/folder2/test'.
+Three folders will be created, test inside folder2, folder2 inside Folder1 and so on.
+Input files and folders will be uploaded inside test folder."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset FOLDERNAME

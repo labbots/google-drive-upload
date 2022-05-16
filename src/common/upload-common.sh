@@ -212,11 +212,19 @@ _setup_workspace() {
         WORKSPACE_FOLDER_ID="${ROOT_FOLDER}"
         WORKSPACE_FOLDER_NAME="${ROOT_FOLDER_NAME}"
     else
-        WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}")" ||
-            { printf "%s\n" "${WORKSPACE_FOLDER_ID}" 1>&2 && return 1; }
-        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name | _json_value name 1 1)" ||
-            { printf "%s\n" "${WORKSPACE_FOLDER_NAME}" 1>&2 && return 1; }
+        # split the string on / and use each value to create folder on drive
+        # it is safe to do as folder names can't contain /
+        while read -r foldername <&4 && { [ -n "${foldername}" ] || continue; }; do
+            # use WORKSPACE_FOLDER_ID folder id when available so the next folder is created inside the previous folder
+            WORKSPACE_FOLDER_ID="$(_create_directory "${foldername}" "${WORKSPACE_FOLDER_ID:-${ROOT_FOLDER}}")" ||
+                { printf "%s\n" "${WORKSPACE_FOLDER_ID}" 1>&2 && return 1; }
+            WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name | _json_value name 1 1)" ||
+                { printf "%s\n" "${WORKSPACE_FOLDER_NAME}" 1>&2 && return 1; }
+        done 4<< EOF
+$(_split "${FOLDERNAME}" "/")
+EOF
     fi
+
     return 0
 }
 
