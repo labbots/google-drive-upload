@@ -7,15 +7,17 @@
 ###################################################
 _parser_setup_flags() {
     # add initial help text which will appear at start
-    _parser_add_help "
-The script can be used to upload file/directory to google drive.
+    _parser_add_help "The script can be used to upload file/directory to google drive.
 
-Usage:
-${0##*/} [options.. ] <filename> <foldername>
+Usage: ${0##*/} filename/foldername/file_id/file_link -c gdrive_folder_name
 
-Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive root folder.
+where filename/foldername is input file/folder and file_id/file_link is the accessible gdrive file link or id which will be uploaded without downloading.
 
-File name argument is optional if create directory option is used.
+Note: It’s not mandatory to use gdrive_folder_name | -c / -C / –create-dir flag.
+
+gdrive_folder_name is the name of the folder on gdrive, where the input file/folder will be uploaded. If gdrive_folder_name is present on gdrive, then script will upload there, else will make a folder with that name.
+
+Apart from basic usage, this script provides many flags for custom usecases, like parallel uploading, skipping upload of existing files, overwriting, etc.
 
 Options:"
 
@@ -79,7 +81,11 @@ EOF
 
     _parser_setup_flag "-ca --create-account" 1 required "account name"
     _parser_setup_flag_help \
-        "To create a new account with the given name if does not already exists."
+        "To create a new account with the given name if does not already exists.
+
+Note 1: Only for interactive terminal usage
+
+Note 2: This flag is preferred over --account."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset OAUTH_ENABLED NEW_ACCOUNT_NAME
@@ -108,7 +114,8 @@ EOF
 
     _parser_setup_flag "-c -C --create-dir" 1 required "foldername"
     _parser_setup_flag_help \
-        "Option to create directory on drive. Will print folder id. If this option is used, then input files/folders are optional.
+        "Option to create directory on drive. Will print folder id.
+If this option is used, then input files/folders are optional.
 
 Also supports specifying sub folders, -c 'Folder1/folder2/test'.
 Three folders will be created, test inside folder2, folder2 inside Folder1 and so on.
@@ -143,7 +150,8 @@ EOF
 
     _parser_setup_flag "-s --skip-subdirs" 0
     _parser_setup_flag_help \
-        "Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads."
+        "Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder.
+Use this along with -p/--parallel option to speed up the uploads."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset SKIP_SUBDIRS
@@ -157,7 +165,13 @@ EOF
 
     _parser_setup_flag "-p --parallel" 1 required "no of files to parallely upload"
     _parser_setup_flag_help \
-        "Upload multiple files in parallel, Max value = 10."
+        "Upload multiple files in parallel, Max value = 10.
+
+Note:
+    This command is only helpful if you are uploading many files which aren’t big enough to utilise your full bandwidth.
+    Using it otherwise will not speed up your upload and even error sometimes,
+
+    1 - 6 value is recommended, but can use upto 10. If errors with a high value, use smaller number. "
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset NO_OF_PARALLEL_JOBS PARALLEL_UPLOAD
@@ -195,7 +209,9 @@ EOF
 
     _parser_setup_flag "-o --overwrite" 0
     _parser_setup_flag_help \
-        "Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders."
+        "Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders.
+
+Note: If you use this flag along with -d/–skip-duplicates, the skip duplicates flag is preferred."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset OVERWRITE UPLOAD_MODE
@@ -209,7 +225,8 @@ EOF
 
     _parser_setup_flag "-d --skip-duplicates" 0
     _parser_setup_flag_help \
-        "Do not upload the files with the same name and size, if already present in the root folder/input folder, also works with recursive folders."
+        "Do not upload the files with the same name and size, if already present in the root folder/input folder.
+Also works with recursive folders."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset SKIP_DUPLICATES UPLOAD_MODE
@@ -223,7 +240,8 @@ EOF
 
     _parser_setup_flag "-cm --check-mode" 1 required "size or md5"
     _parser_setup_flag_help \
-        "Additional flag for --overwrite and --skip-duplicates flag. Can be used to change check mode in those flags, available args are 'size' and 'md5'."
+        "Additional flag for --overwrite and --skip-duplicates flag. Can be used to change check mode in those flags.
+Available modes are 'size' and 'md5'."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset CHECK_MODE
@@ -262,7 +280,8 @@ EOF
 
     _parser_setup_flag "-S --share" 1 required "email address"
     _parser_setup_flag_help \
-        "Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link."
+        "Share the uploaded input file/folder, grant reader permission to provided email address OR
+To everyone with the shareable link."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset SHARE EMAIL_REGEX SHARE_EMAIL
@@ -294,7 +313,7 @@ EOF
 
                        : c / commenter - Comment only permission.
 
-Note: Although this flag is independent of --share flag but when email is needed, then --share flag use is neccessary."
+Note: This flag is independent of --share flag but when email is needed, then --share flag use is neccessary."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset SHARE_ROLE SHARE
@@ -353,6 +372,9 @@ EOF
     _parser_setup_flag "-z --config" 1 required "config path"
     _parser_setup_flag_help \
         "Override default config file with custom config file.
+
+Default Config: \${HOME}/.googledrive.conf
+
 If you want to change default value, then use this format -z/--config default=default=your_config_file_path."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
@@ -410,7 +432,8 @@ EOF
     _parser_setup_flag_help \
         "Only upload the files which contains the given pattern - Applicable for folder uploads.
 
-e.g: ${0##*/} local_folder --include 1, will only include with files with pattern 1 in the name. Regex can be used which works with grep -E command."
+e.g: ${0##*/} local_folder --include 1, will only include with files with pattern 1 in the name.
+Regex can be used which works with grep -E command."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset INCLUDE_FILES
@@ -426,7 +449,8 @@ EOF
     _parser_setup_flag_help \
         "Only download the files which does not contain the given pattern - Applicable for folder downloads.
 
-e.g: ${0##*/} local_folder --exclude 1, will only include with files with pattern 1 not present in the name. Regex can be used which works with grep -E command."
+e.g: ${0##*/} local_folder --exclude 1, will only include with files with pattern 1 not present in the name.
+Regex can be used which works with grep -E command."
 
     _parser_setup_flag_preprocess 4<< 'EOF'
 unset EXCLUDE_FILES
