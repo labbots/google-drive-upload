@@ -945,28 +945,60 @@ fi
 else
 "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"&&unset refresh_token_value_check_refresh_token
 fi
-[ -z "$refresh_token_value_check_refresh_token" ]&&{
-printf "\n"&&"${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
-URL="https://accounts.google.com/o/oauth2/auth?client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=$SCOPE&response_type=code&prompt=consent"
-printf "\n%s\n" "$URL"
-unset AUTHORIZATION_CODE authorization_code AUTHORIZATION_CODE_VALID response
-until [ -n "$AUTHORIZATION_CODE" ]&&[ -n "$AUTHORIZATION_CODE_VALID" ];do
-[ -n "$AUTHORIZATION_CODE" ]&&{
-if _assert_regex "$authorization_code_regex" "$AUTHORIZATION_CODE";then
-AUTHORIZATION_CODE_VALID="true"&&continue
-else
-"${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-"&&unset AUTHORIZATION_CODE authorization_code
+server_string_check_refresh_token='Now go back to command line..'
+server_port_check_refresh_token='8079'
+while :;do
+: "$((server_port_check_refresh_token+=1))"
+if [ "$server_port_check_refresh_token" -gt 8130 ];then
+"${QUIET:-_print_center}" "normal" "Error: No open ports found ( 8080 to 8130 )." "-"
+return 1
 fi
-}
-{ [ -z "$authorization_code" ]&&printf "\n"&&"${QUIET:-_print_center}" "normal" " Enter the authorization code " "-";}||_clear_line 1
-printf -- "-> \033[?7l"
-read -r AUTHORIZATION_CODE&&authorization_code=1
-printf '\033[?7h'
+{ curl -Is "http://localhost:$server_port_check_refresh_token"&&continue;}||break
 done
-response_check_refresh_token="$(curl --compressed "$CURL_PROGRESS" -X POST \
---data "code=$AUTHORIZATION_CODE&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&redirect_uri=$REDIRECT_URI&grant_type=authorization_code" "$TOKEN_URL")"||:
+if command -v python 1>/dev/null&&python -V|grep -q 'Python 3';then
+python <<EOF 1>"$TMPFILE.code" 2>&1&
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        if '/?code' in self.path:
+            message = '$server_string_check_refresh_token'
+            self.wfile.write(bytes(message, "utf8"))
+
+with HTTPServer(('', $server_port_check_refresh_token), handler) as server:
+    server.serve_forever()
+EOF
+_tmp_server_pid="$!"
+elif command -v nc 1>/dev/null;then
+printf "%b" "HTTP/1.1 200 OK\nContent-Length: $(printf "%s" "$server_string_check_refresh_token"|wc -c)\n\n$server_string_check_refresh_token"|nc -c -l -p "$server_port_check_refresh_token" 1>"$TMPFILE.code" 2>&1&
+_tmp_server_pid="$!"
+else
+"${QUIET:-_print_center}" "normal" " Error: neither netcat (nc) nor python3 is installed. It is required to required a http server which is used in fetching authorization code. Install and proceed." "-"
+return 1
+fi
+code_challenge_check_refresh_token="$(_epoch)authorization_code"
+[ -z "$refresh_token_value_check_refresh_token" ]&&{
+printf "\n"&&"${QUIET:-_print_center}" "normal" "Visit the below URL, follow the instructions and then come back to commandline" " "
+URL="https://accounts.google.com/o/oauth2/auth?client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI%3A$server_port_check_refresh_token&scope=$SCOPE&response_type=code&code_challenge_method=plain&code_challenge=$code_challenge_check_refresh_token"
+printf "\n%s\n" "$URL"
+"${QUIET:-_print_center}" "normal" " Press enter if you have completed the process in browser" "-"
+read -r _
+kill "$_tmp_server_pid"
+if ! authorization_code="$(grep -m1 'GET.*code.*HTTP/1.1' <"$TMPFILE.code"|sed -e 's/.*GET.*code=//' -e 's/\&.*//')"&&_assert_regex "$authorization_code_regex" "$authorization_code";then
+"${QUIET:-_print_center}" "normal" " Code was not fetched properly , here is some info that maybe helpful.. " "-"
+"${QUIET:-_print_center}" "normal" " Code that was grabbed: $authorization_code " "-"
+printf "Output of http server:\n"
+cat "$TMPFILE.code"
+(rm -f "$TMPFILE.code"&)
+return 1
+fi
+(rm -f "$TMPFILE.code"&)
+response_check_refresh_token="$(_curl --compressed "$CURL_PROGRESS" -X POST \
+--data "code=$authorization_code&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&redirect_uri=$REDIRECT_URI%3A$server_port_check_refresh_token&grant_type=authorization_code&code_verifier=$code_challenge_check_refresh_token" "$TOKEN_URL")"||:
 _clear_line 1 1>&2
-refresh_token_value_check_refresh_token="$(printf "%s\n" "$response_check_refresh_token"|_json_value refresh_token 1 1)"||{ printf "%s\n" "Error: Cannot fetch refresh token, make sure the authorization code was correct."&&return 1;}
+refresh_token_value_check_refresh_token="$(printf "%s\n" "$response_check_refresh_token"|_json_value refresh_token 1 1)"||{ printf "%s\n" "Error: Cannot fetch refresh token, make sure the authorization code was correct."&&printf "%s\n" "$response_check_refresh_token"&&return 1;}
 _set_value direct REFRESH_TOKEN "$refresh_token_value_check_refresh_token"
 { _check_access_token "$account_name_check_refresh_token" skip_check "$response_check_refresh_token"&&_update_config "$refresh_token_name_check_refresh_token" "$refresh_token_value_check_refresh_token" "$CONFIG";}||return 1
 }
