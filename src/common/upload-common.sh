@@ -55,7 +55,7 @@ _setup_arguments() {
     export API_URL="https://www.googleapis.com"
     export API_VERSION="v3" \
         SCOPE="${API_URL}/auth/drive" \
-        REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob" \
+        REDIRECT_URI="http%3A//localhost" \
         TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
     _parse_arguments "_parser_setup_flags" "${@}" || return 1
