@@ -368,7 +368,7 @@ EOF
             _tmp_server_pid="${!}"
         elif command -v nc 1> /dev/null; then
             # https://stackoverflow.com/a/58436505
-            printf "%b" "HTTP/1.1 200 OK\nContent-Length: $(printf "%s" "${server_string_check_refresh_token}" | wc -c)\n\n${server_string_check_refresh_token}" | nc -c -l -p "${server_port_check_refresh_token}" 1> "${TMPFILE}.code" 2>&1 &
+            printf "%b" "HTTP/1.1 200 OK\nContent-Length: $(printf "%s" "${server_string_check_refresh_token}" | wc -c)\n\n${server_string_check_refresh_token}" | nc -l -p "${server_port_check_refresh_token}" 1> "${TMPFILE}.code" 2>&1 &
             _tmp_server_pid="${!}"
         else
             "${QUIET:-_print_center}" "normal" " Error: neither netcat (nc) nor python3 is installed. It is required to required a http server which is used in fetching authorization code. Install and proceed." "-"
