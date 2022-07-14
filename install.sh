@@ -419,6 +419,7 @@ _start() {
         fi
 
         chmod "a-w-r-x,${PERM_MODE:-u}+x+r" -- "${INSTALL_PATH}/${COMMAND_NAME}"
+        chmod "a-w-r-x,${PERM_MODE:-u}+x+r" -- "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
 
         for _ in 1 2; do _clear_line 1; done
 
