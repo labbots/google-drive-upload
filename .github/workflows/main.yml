@@ -33,11 +33,11 @@ jobs:
           set -e
           sh install.sh
               PATH="${HOME}/.google-drive-upload/bin:${PATH}"
-              gupload --info && gsync --help
+              gupload --info && gsync --help | head -n 10
           sh install.sh -U && sh install.sh --posix -B master
-              gupload --info && gsync --help
-          sh install.sh -U  && sh install.sh -c custom_gupload sync="custom_gsync"
-              custom_gupload --info && custom_gsync --help
+              gupload --info && gsync --help | head -n 10
+          sh install.sh -U  && sh install.sh -c custom_gupload -sc custom_gsync
+              custom_gupload --info && custom_gsync --help | head -n 10
     - name: 'Format and merge test'
       run: |
           set -e

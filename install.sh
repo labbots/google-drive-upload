@@ -10,8 +10,8 @@ All flags are optional.\n
 Options:\n
   -p | --path <dir_name> - Custom path where you want to install script.\nDefault Path: ${HOME}/.google-drive-upload. \n
   -c | --cmd <command_name> - Custom command name, after installation script will be available as the input argument.
-      To change sync command name, use %s -c gupload sync='gsync'
       Default upload command: gupload
+  -sc | --sync-cmd <command name> - Custom command name for gsync.
       Default sync command: gsync\n
   -r | --repo <Username/reponame> - Upload script from your custom repo,e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
@@ -515,6 +515,10 @@ _setup_arguments() {
             -c | --cmd)
                 _check_longoptions "${1}" "${2}"
                 COMMAND_NAME="${2}" && shift
+                ;;
+            -sc | --sync-cmd)
+                _check_longoptions "${1}" "${2}"
+                SYNC_COMMAND_NAME="${2}" && shift
                 ;;
             -b | -B | --branch)
                 _check_longoptions "${1}" "${2}"
