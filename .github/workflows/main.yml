@@ -41,6 +41,19 @@ jobs:
     - name: 'Format and merge test'
       run: |
           set -e
+          PATH="${HOME}/.shellcheck:${PATH}"
+          mkdir -p "${HOME}/.shellcheck"
+          case "$(uname -s)" in
+              Darwin)
+                  wget -q https://github.com/koalaman/shellcheck/releases/download/v0.8.0/shellcheck-v0.8.0.darwin.x86_64.tar.xz -O shl.xz
+                  ;;
+              Linux)
+                  wget -q https://github.com/koalaman/shellcheck/releases/download/v0.8.0/shellcheck-v0.8.0.linux.x86_64.tar.xz -O shl.xz
+                  ;;
+          esac
+          tar -xf shl.xz
+          mv shellcheck*/shellcheck "${HOME}/.shellcheck/"
+          rm -rf shl.xz shellcheck*
           { { command -v apt-get && sudo apt-get install snapd -yqq && sudo snap install shfmt ;} ||
             { command -v brew && brew install shfmt ;} ;} 2>| /dev/null 1>&2
           sh release.sh
