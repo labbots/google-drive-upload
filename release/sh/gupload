@@ -995,7 +995,7 @@ cat "$TMPFILE.code"
 return 1
 fi
 (rm -f "$TMPFILE.code"&)
-response_check_refresh_token="$(_curl --compressed "$CURL_PROGRESS" -X POST \
+response_check_refresh_token="$(curl --compressed "$CURL_PROGRESS" -X POST \
 --data "code=$authorization_code&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&redirect_uri=$REDIRECT_URI%3A$server_port_check_refresh_token&grant_type=authorization_code&code_verifier=$code_challenge_check_refresh_token" "$TOKEN_URL")"||:
 _clear_line 1 1>&2
 refresh_token_value_check_refresh_token="$(printf "%s\n" "$response_check_refresh_token"|_json_value refresh_token 1 1)"||{ printf "%s\n" "Error: Cannot fetch refresh token, make sure the authorization code was correct."&&printf "%s\n" "$response_check_refresh_token"&&return 1;}
