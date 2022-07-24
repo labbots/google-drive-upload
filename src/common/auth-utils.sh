@@ -363,7 +363,7 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(bytes(message, "utf8"))
 
 with HTTPServer(('', ${server_port_check_refresh_token}), handler) as server:
-    server.serve_forever()
+    server.handle_request()
 EOF
             _tmp_server_pid="${!}"
         elif command -v nc 1> /dev/null; then
@@ -384,7 +384,7 @@ EOF
 
             "${QUIET:-_print_center}" "normal" " Press enter if you have completed the process in browser" "-"
             read -r _
-            kill "${_tmp_server_pid}"
+            kill "${_tmp_server_pid}" 1>| /dev/null 2>&1 || :
 
             if ! authorization_code="$(grep -m1 'GET.*code.*HTTP/1.1' < "${TMPFILE}.code" | sed -e 's/.*GET.*code=//' -e 's/\&.*//')" &&
                 _assert_regex "${authorization_code_regex}" "${authorization_code}"; then
